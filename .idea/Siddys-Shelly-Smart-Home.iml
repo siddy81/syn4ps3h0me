@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="JAVA_MODULE" version="4">
+  <component name="NewModuleRootManager" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/docker/influxdb/data/wal/_internal/monitor/10" />
+      <excludeFolder url="file://$MODULE_DIR$/docker/influxdb/data/wal/_internal/monitor/4" />
+      <excludeFolder url="file://$MODULE_DIR$/docker/influxdb/data/wal/_internal/monitor/5" />
+      <excludeFolder url="file://$MODULE_DIR$/docker/influxdb/data/wal/_internal/monitor/6" />
+      <excludeFolder url="file://$MODULE_DIR$/docker/influxdb/data/wal/_internal/monitor/7" />
+      <excludeFolder url="file://$MODULE_DIR$/docker/influxdb/data/wal/_internal/monitor/8" />
+      <excludeFolder url="file://$MODULE_DIR$/docker/influxdb/data/wal/_internal/monitor/9" />
+      <excludeFolder url="file://$MODULE_DIR$/docker/influxdb/data/wal/shelly" />
+      <excludeFolder url="file://$MODULE_DIR$/docker/mosquitto/config" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

@@ -1,0 +1,32 @@
+{
+  "id": null,
+  "uid": "shelly-public-overview",
+  "title": "Shelly Public Overview",
+  "tags": ["shelly", "mqtt"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-60m", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Raw MQTT Messages (last 60 min)",
+      "datasource": { "type": "influxdb", "uid": "influx_shelly" },
+      "gridPos": { "h": 18, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"shelly\") |> range(start: -60m) |> filter(fn: (r) => r._measurement == \"shelly_raw\" and r._field == \"value\") |> keep(columns:[\"_time\",\"topic\",\"_value\"]) |> sort(columns:[\"_time\"], desc: true) |> limit(n: 200)"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    }
+  ]
+}
+

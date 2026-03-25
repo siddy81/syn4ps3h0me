@@ -1,0 +1,3 @@
+# Ensure Pi-hole source/config files use LF line endings.
+docker/pihole/*.list text eol=lf
+docker/pihole/**/*.conf text eol=lf

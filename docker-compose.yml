@@ -1,0 +1,201 @@
+name: shelly-stack
+
+x-auth-env: &auth-env
+  MQTT_USER: ${MQTT_USER}
+  MQTT_PASSWORD: ${MQTT_PASSWORD}
+
+x-admin-env: &admin-env
+  STACK_ADMIN_PASSWORD: ${STACK_ADMIN_PASSWORD}
+
+x-influx-init-env: &influx-init-env
+  DOCKER_INFLUXDB_INIT_MODE: ${INFLUXDB_INIT_MODE}
+  DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME}
+  DOCKER_INFLUXDB_INIT_PASSWORD: ${STACK_ADMIN_PASSWORD}
+  DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG}
+  DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET}
+  DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_WRITE_TOKEN}
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-broker
+    hostname: pihole.${INTRANET_DOMAIN}
+    restart: unless-stopped
+    networks:
+      - intranet
+    ports:
+      - "1883:1883"
+    environment:
+      <<: *auth-env
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    command:
+      - sh
+      - -ec
+      - |
+        if [ ! -f /mosquitto/data/passwd ]; then
+          echo "Create passwd file"
+          mosquitto_passwd -b -c /mosquitto/data/passwd "$$MQTT_USER" "$$MQTT_PASSWORD"
+        else
+          echo "Update passwd for user $$MQTT_USER"
+          mosquitto_passwd -b /mosquitto/data/passwd "$$MQTT_USER" "$$MQTT_PASSWORD"
+        fi
+
+        chmod 600 /mosquitto/data/passwd
+        exec mosquitto -c /mosquitto/config/mosquitto.conf
+
+  influxdb:
+    image: influxdb:2
+    container_name: influx-db
+    hostname: pihole.${INTRANET_DOMAIN}
+    restart: unless-stopped
+    networks:
+      - intranet
+    ports:
+      - "8086:8086"
+    environment:
+      <<: *influx-init-env
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+
+  telegraf:
+    image: telegraf:1.37
+    container_name: telegraf-agent
+    hostname: pihole.${INTRANET_DOMAIN}
+    restart: unless-stopped
+    networks:
+      - intranet
+    depends_on:
+      - mosquitto
+      - influxdb
+    pid: "host"
+    environment:
+      <<: *auth-env
+      INFLUXDB_ORG: ${INFLUXDB_ORG}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+      INFLUXDB_WRITE_TOKEN: ${INFLUXDB_WRITE_TOKEN}
+      HOST_PROC: /hostfs/proc
+      HOST_SYS: /hostfs/sys
+      HOST_ETC: /hostfs/etc
+      HOST_MOUNT_PREFIX: /hostfs
+    volumes:
+      - /:/hostfs:ro
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    command:
+      - --non-strict-env-handling
+      - --config
+      - /etc/telegraf/telegraf.conf
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-ui
+    hostname: pihole.${INTRANET_DOMAIN}
+    restart: unless-stopped
+    networks:
+      - intranet
+    depends_on:
+      - influxdb
+    ports:
+      - "3000:3000"
+    environment:
+      <<: *admin-env
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${STACK_ADMIN_PASSWORD}
+      GF_FEATURE_TOGGLES_ENABLE: publicDashboards
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-home}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+      INFLUXDB_WRITE_TOKEN: ${INFLUXDB_WRITE_TOKEN}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pi-hole
+    hostname: pihole.${INTRANET_DOMAIN}
+    restart: unless-stopped
+    networks:
+      - intranet
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "8088:80/tcp"
+    dns:
+      - 1.1.1.1
+      - 9.9.9.9
+    environment:
+      <<: *admin-env
+      TZ: ${TZ:-Europe/Berlin}
+      # Pi-hole Docker config (FTLCONF_*)
+      FTLCONF_webserver_api_password: ${STACK_ADMIN_PASSWORD}
+      FTLCONF_webserver_interface_theme: ${PIHOLE_WEBTHEME:-default-darker}
+      FTLCONF_dns_upstreams: ${PIHOLE_DNS_UPSTREAMS:-1.1.1.1;1.0.0.1;1.1.1.1;9.9.9.9}
+      FTLCONF_dns_rateLimit_interval: 60
+      FTLCONF_dns_rateLimit_count: 2000
+      FTLCONF_dns_dnssec: ${PIHOLE_DNSSEC:-true}
+      FTLCONF_dns_listeningMode: all
+      # Backward-compatible aliases
+      WEBPASSWORD: ${STACK_ADMIN_PASSWORD}
+      WEBTHEME: ${PIHOLE_WEBTHEME:-default-darker}
+      DNSMASQ_LISTENING: all
+      FTLCONF_LOCAL_IPV4: ${RPI_IP}
+      FTLCONF_dhcp_active: ${PIHOLE_DHCP_ACTIVE}
+      FTLCONF_dhcp_start: ${PIHOLE_DHCP_START}
+      FTLCONF_dhcp_end: ${PIHOLE_DHCP_END}
+      FTLCONF_dhcp_router: ${PIHOLE_DHCP_ROUTER}
+      FTLCONF_dhcp_leaseTime: ${PIHOLE_DHCP_LEASETIME:-24h}
+      FTLCONF_dns_hosts: |-
+        192.168.1.1 fritzbox.arkham.asylum
+        192.168.1.3 darksiddious.arkham.asylum
+        192.168.1.4 padawan.arkham.asylum
+        192.168.1.5 batman.arkham.asylum
+        192.168.1.101 nightmaresiddious.arkham.asylum
+
+    volumes:
+      - ./pihole/etc-pihole:/etc/pihole
+      - ./pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+      - ./pihole/adlists.list:/etc/pihole/adlists.list
+      - ./pihole/lighttpd-external.conf:/etc/lighttpd/external.conf:ro
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+      - SYS_NICE
+
+  caddy:
+    image: caddy:2
+    container_name: caddy-proxy
+    hostname: pihole.${INTRANET_DOMAIN}
+    restart: unless-stopped
+    networks:
+      - intranet
+    depends_on:
+      - grafana
+      - pihole
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN}
+      PIHOLE_DOMAIN: ${PIHOLE_DOMAIN}
+      LEGACY_HOST_DOMAIN: ${LEGACY_HOST_DOMAIN}
+      LEGACY_HOST_IP: ${LEGACY_HOST_IP}
+    command: ["caddy", "run", "--config", "/etc/caddy/config.json"]
+    volumes:
+      - ./caddy/config.json:/etc/caddy/config.json:ro
+      - caddy_data:/data
+
+networks:
+  intranet:
+    name: intranet
+
+volumes:
+  influxdb_data:
+  influxdb_config:
+  grafana_data:
+  mosquitto_data:
+  mosquitto_log:
+  caddy_data:
