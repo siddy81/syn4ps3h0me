@@ -62,7 +62,7 @@ services:
       - influxdb_config:/etc/influxdb2
 
   telegraf:
-    image: telegraf:1.37
+    image: telegraf:1.38
     container_name: telegraf-agent
     hostname: pihole.${INTRANET_DOMAIN}
     restart: unless-stopped
