@@ -47,8 +47,15 @@ Bevor du `install.sh` startest, sollten diese Voraussetzungen erfüllt sein:
 - Projekt liegt lokal auf dem Pi (z. B. in `~/workspace/syn4ps3h0me`)
 
 #### Weitere Hardware
+Optional bzw. je nach gewünschtem Ausbau des Setups:
+
 - [45 Watt Netzteil](https://amzn.to/3PwXOTd)
 - [Raspberry Pi Gehäuse](https://amzn.to/4uSu5UW)
+- [Shelly H&T Gen 3](https://amzn.to/41up2wi)
+- [Shelly Motion](https://amzn.to/4bHycuc)
+- [Shelly Door/Window](https://amzn.to/40TNPda)
+- [shelly 1pm](https://amzn.to/4bHycuc)
+
 ### Installation starten
 ```bash
 cd ~/workspace/syn4ps3h0me
