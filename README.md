@@ -1,13 +1,35 @@
 # syn4ps3h0me
 
-Dieses Projekt betreibt ein lokales Smart-Home-Monitoring mit Intranet-DNS über **Pi-hole**. Alle internen Services folgen dem verbindlichen Namensschema `*.arkham.asylum`.
-## Docker installieren in Shell
+## Über dieses Projekt
+
+Dieses Projekt vereinfacht die Installation und Inbetriebnahme eines lokalen Smart-Home-Monitorings auf dem Raspberry Pi.
+
+Zum Setup gehört auch ein lokales Intranet-DNS mit **Pi-hole**.  
+Damit die Namensauflösung im Netzwerk zuverlässig funktioniert, muss **Pi-hole in der FRITZ!Box korrekt als DNS-Server eingetragen** sein.
+
+Die Installation, Grundkonfiguration und der Start der benötigten Services erfolgen zentral über **`install.sh`**.  
+Abhängig vom Systemzustand kann während des Setups ein **Neustart per `sudo reboot`** erforderlich sein.
+
+## Rechtlicher Hinweis
+
+Dies ist ein **inoffizielles Community-Skript** und **kein offizielles Produkt** eines der verwendeten Hersteller oder Softwareanbieter.
+
+Das Repository selbst enthält nur eigene Automatisierungs- und Konfigurationsdateien.  
+Benötigte **Drittsoftware** wird über die **offiziellen Bezugsquellen** der jeweiligen Hersteller installiert.
+
+Es gelten immer die jeweiligen **Herstellerlizenzen**, **Nutzungsbedingungen** und **Lizenzmodelle** der eingesetzten Drittsoftware.  
+Die Verantwortung für die rechtmäßige Nutzung und Einhaltung dieser Bedingungen liegt beim jeweiligen Nutzer.
+
+## Hinweis zu Empfehlungs- und Affiliate-Links
+
+Dieses Projekt ist ein inoffizielles Community-Projekt.
+
+Einige Links in dieser README können Empfehlungs- oder Affiliate-Links sein. Wenn über solche Links ein Kauf erfolgt, kann eine Provision anfallen. Für dich entstehen dadurch keine zusätzlichen Kosten.
+
+Als Amazon-Partner verdiene ich an qualifizierten Verkäufen.
 
 ```bash
-curl -fsSL https://get.Docker.com -o get-Docker.sh
-sudo sh get-Docker.sh
-sudo usermod -aG docker $USER
-newgrp docker
+ git clone git@github.com:siddy81/syn4ps3h0me.git
 ```
 
 ## Installation auf dem Raspberry Pi (mit `install.sh`)
