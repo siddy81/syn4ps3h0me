@@ -34,6 +34,11 @@ Als Amazon-Partner verdiene ich an qualifizierten Verkäufen.
 
 ## Installation auf dem Raspberry Pi (mit `install.sh`)
 
+### Zentrales Admin-Passwort
+Das Admin-Passwort für **InfluxDB**, **Grafana** und **Pi-hole** wird zentral über `STACK_ADMIN_PASSWORD` in der .env-Datei gesteuert.
+Default ist es auf admin123 gesetzt. Unbedingt vor der Inbetriebnahme ändern!
+
+
 ### Vorbedingungen
 Bevor du `install.sh` startest, sollten diese Voraussetzungen erfüllt sein:
 - [Raspberry Pi 5 mit mindestens 8 GB Ram, besser 16 GB OS (64-bit, Debian Trixie) mit Internetzugang](https://amzn.to/4dafwWq)
@@ -489,3 +494,11 @@ docker compose exec pihole pihole restartdns
   - `docker/pihole/adlists.list`
 
 Details zu Änderungen und Ports stehen in `CHANGELOG.md`.
+
+## Grafana
+
+### Anpassung der Stromkosten
+
+Damit die Kosten im Dashboard korrekt dargestellt werden, 
+müsst ihr in der Datei `shelly-overview.json` im Bereich 
+**Gesamtkosten** den Standardwert `0.3577` durch euren eigenen Strompreis ersetzen.

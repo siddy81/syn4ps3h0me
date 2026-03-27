@@ -33,54 +33,48 @@ let CONFIG = {
     // ------------------------------------------------------------------------
     devices: [
         {
-            mac: "38:39:8f:9d:57:12",
+            mac: "<MAC>",
             name: "Schlafzimmer Bewegung",
             type: "motion",
             no_motion_after_sec: 90
-        }    ,
+        },
         {
-            mac: "e8:e0:7e:cc:00:eb",
+            mac: "<MAC>",
             name: "Wohnzimmer Bewegung",
             type: "motion",
             no_motion_after_sec: 90
         },
         {
-            mac: "3c:2e:f5:73:1d:e4",
+            mac: "<MAC>",
             name: "Essecke Bewegung",
             type: "motion",
             no_motion_after_sec: 90
         },
         {
-            mac: "38:39:8f:98:85:b9",
+            mac: "<MAC>",
             name: "Flur Bewegung",
             type: "motion",
             no_motion_after_sec: 90
         },
 
         {
-            mac: "f4:b3:b1:82:ce:fb",
+            mac: "<MAC>",
             name: "Terrassentür",
             type: "door",
             no_motion_after_sec: 90
         },
         {
-            mac: "38:39:8f:98:62:fe",
+            mac: "<MAC>",
             name: "Wohnungstür",
             type: "door",
             no_motion_after_sec: 90
         },
         {
-            mac: "b0:c7:de:06:63:47",
+            mac: "<MAC>",
             name: "Balkontür",
             type: "door",
             no_motion_after_sec: 90
         }
-        // Beispiel:
-        // {
-        //     mac: "34:85:18:aa:bb:cc",
-        //     name: "haustuer",
-        //     type: "door"
-        // }
     ],
 
     // ------------------------------------------------------------------------
@@ -88,41 +82,34 @@ let CONFIG = {
     // enter: door(open) -> motion(1)
     // exit:  motion(1)  -> door(open)
     // motion_macs erlaubt mehrere Bewegungsmelder pro Gruppe
+    // Problem: es werden aktuell zu viele Events geworfen, muss an einer geeigneten Stelle einen Cooldown o.Ä. einprogrammieren
     // ------------------------------------------------------------------------
     flow_groups: [
-        // Beispiel:
-        // {
-        //     name: "eingang",
-        //     door_mac: "34:85:18:aa:bb:cc",
-        //     motion_macs: ["38:39:8f:9d:57:12", "e8:e0:7e:cc:00:eb"],
-        //     sequence_timeout_sec: 20,
-        //     door_open_value: 1
-        // }
          {
              name: "Terrassentür eingang",
-             door_mac: "f4:b3:b1:82:ce:fb",
-             motion_mac: "e8:e0:7e:cc:00:eb",
+             door_mac: "<MAC Door>",
+             motion_mac: "<MAC Motion>",
              sequence_timeout_sec: 20,
              door_open_value: 1
          },
         {
             name: "Wohnungstür eingang",
-            door_mac: "38:39:8f:98:62:fe",
-            motion_mac: "38:39:8f:98:85:b9",
+            door_mac: "<MAC Door>",
+            motion_mac: "<MAC Motion>",
             sequence_timeout_sec: 20,
             door_open_value: 1
         },
         {
             name: "Balkontür eingang",
-            door_mac: "b0:c7:de:06:63:47",
-            motion_mac: "3c:2e:f5:73:1d:e4",
+            door_mac: "<MAC Door>",
+            motion_mac: "<MAC Motion>",
             sequence_timeout_sec: 20,
             door_open_value: 1
         }
     ]
 };
 
-// Rückwärtskompatibilität (falls alte Felder verwendet werden)
+
 if ((!CONFIG.devices || CONFIG.devices.length === 0) && CONFIG.sensor_mac && CONFIG.device_name) {
     CONFIG.devices = [{
         mac: CONFIG.sensor_mac,
@@ -133,9 +120,9 @@ if ((!CONFIG.devices || CONFIG.devices.length === 0) && CONFIG.sensor_mac && CON
 }
 
 let deviceByMac = {};
-let deviceState = {}; // per MAC: {lastPid, lastMotionState, lastWindowState, offTimer}
+let deviceState = {};
 let flowGroups = [];
-let flowState = {};   // per group name: {lastType, lastTs, lastMac}
+let flowState = {};
 
 // ---------- Logging ----------
 function _consoleLog(msg) {
