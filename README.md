@@ -2,13 +2,31 @@
 
 ## Über dieses Projekt
 
+## Über dieses Projekt
+
 Dieses Projekt vereinfacht die Installation und Inbetriebnahme eines lokalen Smart-Home-Monitorings auf dem Raspberry Pi.
 
-Zum Setup gehört auch ein lokales Intranet-DNS mit **Pi-hole**.  
-Damit die Namensauflösung im Netzwerk zuverlässig funktioniert, muss **Pi-hole in der FRITZ!Box korrekt als DNS-Server eingetragen** sein.
+Die Installation, Grundkonfiguration und der Start der benötigten Services erfolgen zentral über **`install.sh`**. Abhängig vom Systemzustand kann während des Setups ein **Neustart per `sudo reboot`** erforderlich sein.
 
-Die Installation, Grundkonfiguration und der Start der benötigten Services erfolgen zentral über **`install.sh`**.  
-Abhängig vom Systemzustand kann während des Setups ein **Neustart per `sudo reboot`** erforderlich sein.
+Aktuell umfasst das Projekt die automatische Einrichtung und Vorkonfiguration der folgenden Komponenten:
+
+- **Mosquitto**
+- **Telegraf**
+- **InfluxDB**
+- **Grafana**
+- **Pi-hole**
+- **Caddy**
+
+Dabei wird eine vollständige Toolchain für das lokale Monitoring aufgebaut.  
+**Pi-hole** wird zusätzlich als lokaler DNS-Server und Ad-Blocker vorkonfiguriert. 
+Damit die Namensauflösung im Netzwerk zuverlässig funktioniert, 
+muss **Pi-hole im Router** – z. B. in der **FRITZ!Box** – **korrekt als DNS-Server eingetragen und eingebunden** werden.
+
+
+**Caddy** wird ebenfalls installiert und vorkonfiguriert, um interne Zugriffe komfortabel per **HTTPS** bereitzustellen. 
+Die Konfiguration ist in diesem Bereich jedoch noch nicht vollständig abgeschlossen.
+
+
 
 ## Rechtlicher Hinweis
 
