@@ -2,12 +2,13 @@
 
 ## Über dieses Projekt
 
-Dieses Projekt vereinfacht die Installation und Inbetriebnahme eines lokalen Smart-Home-Monitorings auf dem Raspberry Pi.
+Dieses Projekt vereinfacht die Installation und Grundkonfiguration einer lokalen Smart-Home-, Monitoring- und Infrastruktur-Umgebung auf dem Raspberry Pi.
 
 Die Installation, Grundkonfiguration und der Start der benötigten Services erfolgen zentral über **`install.sh`**. Abhängig vom Systemzustand kann während des Setups ein **Neustart per `sudo reboot`** erforderlich sein.
 
 Aktuell umfasst das Projekt die automatische Einrichtung und Vorkonfiguration der folgenden Komponenten:
 
+- **Docker**
 - **Mosquitto**
 - **Telegraf**
 - **InfluxDB**
@@ -15,14 +16,17 @@ Aktuell umfasst das Projekt die automatische Einrichtung und Vorkonfiguration de
 - **Pi-hole**
 - **Caddy**
 
-Dabei wird eine vollständige Toolchain für das lokale Monitoring aufgebaut.  
-**Pi-hole** wird zusätzlich als lokaler DNS-Server und Ad-Blocker vorkonfiguriert. 
-Damit die Namensauflösung im Netzwerk zuverlässig funktioniert, 
-muss **Pi-hole im Router** – z. B. in der **FRITZ!Box** – **korrekt als DNS-Server eingetragen und eingebunden** werden.
+Zusätzlich werden aktuell erste Komponenten für zukünftige KI-/Sprachfunktionen vorbereitet bzw. installiert, darunter:
 
+- **hailo-apps**
+- **Whisper-Ressourcen**
+- **hailo-ollama**
 
-**Caddy** wird ebenfalls installiert und vorkonfiguriert, um interne Zugriffe komfortabel per **HTTPS** bereitzustellen. 
-Die Konfiguration ist in diesem Bereich jedoch noch nicht vollständig abgeschlossen.
+Damit entsteht eine lokale, selbst gehostete Basis für Monitoring, MQTT-Kommunikation, DNS, HTTPS-Zugriffe und perspektivisch auch für KI-gestützte Erweiterungen.
+
+**Pi-hole** wird zusätzlich als lokaler DNS-Server und Ad-Blocker vorkonfiguriert. Damit die Namensauflösung im Netzwerk zuverlässig funktioniert, muss **Pi-hole im Router** – z. B. in der **FRITZ!Box** – **korrekt als DNS-Server eingetragen und eingebunden** werden.
+
+**Caddy** wird ebenfalls installiert und vorkonfiguriert, um interne Dienste komfortabel per **HTTPS** bereitzustellen. Dieser Bereich wird aktuell noch weiter ausgebaut.
 
 
 
