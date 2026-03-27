@@ -2,8 +2,6 @@
 
 ## Über dieses Projekt
 
-## Über dieses Projekt
-
 Dieses Projekt vereinfacht die Installation und Inbetriebnahme eines lokalen Smart-Home-Monitorings auf dem Raspberry Pi.
 
 Die Installation, Grundkonfiguration und der Start der benötigten Services erfolgen zentral über **`install.sh`**. Abhängig vom Systemzustand kann während des Setups ein **Neustart per `sudo reboot`** erforderlich sein.
