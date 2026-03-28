@@ -49,7 +49,7 @@ services:
   influxdb:
     image: influxdb:2
     container_name: influx-db
-    hostname: pihole.${INTRANET_DOMAIN}
+    hostname: nightmaresiddious.${INTRANET_DOMAIN}
     restart: unless-stopped
     networks:
       - intranet
@@ -64,7 +64,7 @@ services:
   telegraf:
     image: telegraf:1.38
     container_name: telegraf-agent
-    hostname: pihole.${INTRANET_DOMAIN}
+    hostname: nightmaresiddious.${INTRANET_DOMAIN}
     restart: unless-stopped
     networks:
       - intranet
@@ -92,7 +92,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana-ui
-    hostname: pihole.${INTRANET_DOMAIN}
+    hostname: nightmaresiddious.${INTRANET_DOMAIN}
     restart: unless-stopped
     networks:
       - intranet
@@ -116,7 +116,7 @@ services:
   pihole:
     image: pihole/pihole:latest
     container_name: pi-hole
-    hostname: pihole.${INTRANET_DOMAIN}
+    hostname: nightmaresiddious.${INTRANET_DOMAIN}
     restart: unless-stopped
     networks:
       - intranet
@@ -168,7 +168,7 @@ services:
   caddy:
     image: caddy:2
     container_name: caddy-proxy
-    hostname: pihole.${INTRANET_DOMAIN}
+    hostname: nightmaresiddious.${INTRANET_DOMAIN}
     restart: unless-stopped
     networks:
       - intranet
@@ -187,6 +187,53 @@ services:
     volumes:
       - ./caddy/config.json:/etc/caddy/config.json:ro
       - caddy_data:/data
+
+
+
+  voice-pipeline:
+    build:
+      context: ./voice-pipeline
+    container_name: voice-pipeline
+    hostname: voice.${INTRANET_DOMAIN:-arkham.asylum}
+    restart: unless-stopped
+    user: "${VOICE_HOST_UID:-1000}:${VOICE_HOST_GID:-1000}"
+    networks:
+      - intranet
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    devices:
+      - /dev/snd:/dev/snd
+    group_add:
+      - audio
+    volumes:
+      - /run/user/${VOICE_HOST_UID:-1000}:/run/user/${VOICE_HOST_UID:-1000}
+      - ${VOICE_HAILO_APPS_DIR:-/home/siddy/workspace/hailo-apps}:/home/siddy/workspace/hailo-apps:ro
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      XDG_RUNTIME_DIR: /run/user/${VOICE_HOST_UID:-1000}
+      PULSE_SERVER: unix:/run/user/${VOICE_HOST_UID:-1000}/pulse/native
+      PIPEWIRE_REMOTE: pipewire-0
+      AUDIO_SAMPLE_RATE: ${VOICE_AUDIO_SAMPLE_RATE:-16000}
+      WAKE_WORD_THRESHOLD: ${VOICE_WAKE_WORD_THRESHOLD:-0.5}
+      WAKE_EVENT_COOLDOWN_SECONDS: ${VOICE_WAKE_EVENT_COOLDOWN_SECONDS:-2.0}
+      WAKEWORD_MODEL: ${VOICE_WAKEWORD_MODEL:-hey_jarvis}
+      WAKEWORD_MODEL_PATH: ${VOICE_WAKEWORD_MODEL_PATH:-}
+      POST_WAKE_RECORD_SECONDS: ${VOICE_POST_WAKE_RECORD_SECONDS:-6}
+      AUDIO_DEVICE_REFRESH_SECONDS: ${VOICE_AUDIO_DEVICE_REFRESH_SECONDS:-30}
+      WHISPER_BACKEND: ${VOICE_WHISPER_BACKEND:-hailo_local_cmd}
+      WHISPER_MODEL: ${VOICE_WHISPER_MODEL:-tiny}
+      WHISPER_COMPUTE_TYPE: ${VOICE_WHISPER_COMPUTE_TYPE:-int8}
+      WHISPER_LANGUAGE: ${VOICE_WHISPER_LANGUAGE:-de}
+      HAILO_VENV_PYTHON: /home/siddy/workspace/hailo-apps/venv_hailo_apps/bin/python
+      HAILO_WHISPER_CMD: ${VOICE_HAILO_WHISPER_CMD:-cd {hailo_apps_dir} && source setup_env.sh && {hailo_python} -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat --audio-file {audio_path} --language {language}}
+      HAILO_WHISPER_CMD_TIMEOUT: ${VOICE_HAILO_WHISPER_CMD_TIMEOUT:-120}
+    healthcheck:
+      test: ["CMD-SHELL", "pactl list sources short >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 25s
+
 
 networks:
   intranet:

@@ -240,6 +240,98 @@ wait_for_hailo_ollama() {
   warn "hailo-ollama antwortet noch nicht auf http://localhost:8000/hailo/v1/list"
 }
 
+
+
+ensure_voice_env_defaults() {
+  cd "${PROJECT_DIR}"
+
+  [[ -f ".env" ]] || return
+
+  local uid gid
+  uid="$(id -u "${REAL_USER}" 2>/dev/null || id -u)"
+  gid="$(id -g "${REAL_USER}" 2>/dev/null || id -g)"
+
+  local defaults=(
+    "VOICE_HOST_UID=${uid}"
+    "VOICE_HOST_GID=${gid}"
+    "VOICE_WAKEWORD_MODEL=hey_jarvis"
+    "VOICE_WAKEWORD_MODEL_PATH="
+    "VOICE_WAKE_WORD_THRESHOLD=0.5"
+    "VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0"
+    "VOICE_POST_WAKE_RECORD_SECONDS=6"
+    "VOICE_HAILO_APPS_DIR=/home/siddy/workspace/hailo-apps"
+    "VOICE_HAILO_VENV_PYTHON=/home/siddy/workspace/hailo-apps/venv_hailo_apps/bin/python"
+    "VOICE_WHISPER_BACKEND=hailo_local_cmd"
+    "VOICE_HAILO_WHISPER_CMD=cd /home/siddy/workspace/hailo-apps && source setup_env.sh && /home/siddy/workspace/hailo-apps/venv_hailo_apps/bin/python -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat --audio-file {audio_path} --language {language}"
+    "VOICE_HAILO_WHISPER_CMD_TIMEOUT=120"
+    "VOICE_WHISPER_MODEL=tiny"
+    "VOICE_WHISPER_COMPUTE_TYPE=int8"
+    "VOICE_WHISPER_LANGUAGE=de"
+    "VOICE_AUDIO_SAMPLE_RATE=16000"
+    "VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30"
+  )
+
+  local entry key
+  for entry in "${defaults[@]}"; do
+    key="${entry%%=*}"
+    if ! grep -qE "^${key}=" .env; then
+      echo "${entry}" >> .env
+      log "Ergänze fehlende .env Vorgabe: ${key}"
+    fi
+  done
+}
+
+build_voice_service_image() {
+  cd "${PROJECT_DIR}"
+
+  if [[ ! -f "voice-pipeline/Dockerfile" ]]; then
+    warn "Voice-Pipeline Dockerfile fehlt; Image-Build wird übersprungen."
+    return
+  fi
+
+  log "Baue Voice-Pipeline Image (autostart-ready) ..."
+  ${SUDO} docker compose build voice-pipeline
+}
+
+# ----------------------------
+# Voice pipeline preflight
+# ----------------------------
+voice_pipeline_preflight() {
+  cd "${PROJECT_DIR}"
+
+  if [[ ! -f "voice-pipeline/Dockerfile" ]]; then
+    warn "voice-pipeline/Dockerfile fehlt. Voice-Container kann nicht gebaut werden."
+    return
+  fi
+
+  if [[ ! -d "/dev/snd" ]]; then
+    warn "/dev/snd wurde auf dem Host nicht gefunden. Audio-Capture im Voice-Container ist dann nicht möglich."
+  else
+    log "Audio-Geräte-Node /dev/snd vorhanden."
+  fi
+
+  local user_uid
+  user_uid="$(id -u "${REAL_USER}" 2>/dev/null || id -u)"
+  local voice_runtime_dir="/run/user/${user_uid}"
+  if [[ -d "${voice_runtime_dir}" ]]; then
+    log "PipeWire Runtime-Verzeichnis gefunden: ${voice_runtime_dir}"
+  else
+    warn "PipeWire Runtime-Verzeichnis fehlt: ${voice_runtime_dir}"
+  fi
+
+  if [[ -S "${voice_runtime_dir}/pipewire-0" ]]; then
+    log "PipeWire Socket gefunden: ${voice_runtime_dir}/pipewire-0"
+  else
+    warn "PipeWire Socket nicht gefunden: ${voice_runtime_dir}/pipewire-0"
+  fi
+
+  if ! ${SUDO} docker compose config >/dev/null 2>&1; then
+    fail "docker compose config fehlgeschlagen (inkl. Voice-Pipeline)."
+  fi
+
+  log "Compose-Konfiguration inkl. Voice-Pipeline ist gültig."
+}
+
 # ----------------------------
 # Docker Compose
 # ----------------------------
@@ -308,6 +400,9 @@ summary() {
   echo
   echo "Whisper-Dateien:"
   find /usr/local/hailo/resources -iname '*whisper*' 2>/dev/null || true
+  echo
+  echo "Voice-Pipeline files:"
+  ls -1 "${PROJECT_DIR}/voice-pipeline" 2>/dev/null || true
   echo "============================================================"
 }
 
@@ -325,6 +420,10 @@ main() {
   write_hailo_service
   enable_and_start_hailo_service
   wait_for_hailo_ollama
+
+  ensure_voice_env_defaults
+  voice_pipeline_preflight
+  build_voice_service_image
 
   compose_up
   summary

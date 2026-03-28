@@ -223,10 +223,14 @@ docker compose up -d
 docker compose down
 ```
 
-### HTTPS mit Caddy (lokales TLS, zuverlässig im Heimnetz)
-Der Stack enthält einen vorgeschalteten **Caddy Reverse Proxy** für:
-- `https://grafana.arkham.asylum` → `grafana:3000`
-- `https://pihole.arkham.asylum` → `pihole:80`
+### HTTP/HTTPS
+Erreichbar sind die Services mit der default-Einstellung über die DNS-Einträge: 
+-  
+   → `grafana` `http://nightmaresiddious.arkham.asylum:3000`  
+   → `pihole` `http://nightmaresiddious.arkham.asylum:8088`  
+   → `mosquitto` `http://nightmaresiddious.arkham.asylum:1883`  
+
+
 
 Caddy nutzt standardmäßig eine interne lokale CA (`tls internal`). Dadurch funktionieren HTTPS-Zugriffe im Heimnetz auch ohne öffentliche Domain/Portfreigaben.
 Die Proxy-/TLS-Konfiguration liegt in `caddy/config.json` (Caddy JSON Config).
