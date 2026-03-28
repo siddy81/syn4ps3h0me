@@ -244,7 +244,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${OPEN_WEBUI_PORT:-3002}:8080"
+      - "${OPEN_WEBUI_PORT}:8080"
     environment:
       TZ: ${TZ:-Europe/Berlin}
       OPENAI_API_BASE_URL: ${OPEN_WEBUI_OPENAI_API_BASE_URL}
