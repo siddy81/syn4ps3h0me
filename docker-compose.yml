@@ -265,3 +265,4 @@ volumes:
   mosquitto_data:
   mosquitto_log:
   caddy_data:
+  open_webui_data:
