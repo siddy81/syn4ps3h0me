@@ -235,7 +235,7 @@ services:
       start_period: 25s
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:latest
     container_name: open-webui
     hostname: open-webui.${INTRANET_DOMAIN}
     restart: unless-stopped
@@ -244,11 +244,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${OPEN_WEBUI_PORT:-3002}:8080"
+      - "${OPEN_WEBUI_PORT:-8080}:8080"
     environment:
       TZ: ${TZ:-Europe/Berlin}
-      # Hailo-Ollama läuft als systemd-Service auf dem Host.
-      # Open WebUI spricht deshalb über den nativen Ollama-Endpunkt.
       OLLAMA_BASE_URL: ${OPEN_WEBUI_OLLAMA_BASE_URL:-http://host.docker.internal:8000}
     volumes:
       - open_webui_data:/app/backend/data
