@@ -269,6 +269,9 @@ ensure_voice_env_defaults() {
     "VOICE_WHISPER_LANGUAGE=de"
     "VOICE_AUDIO_SAMPLE_RATE=16000"
     "VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30"
+    "OPEN_WEBUI_PORT=3002"
+    "OPEN_WEBUI_OPENAI_API_BASE_URL=http://host.docker.internal:8000/hailo/v1"
+    "OPEN_WEBUI_OPENAI_API_KEY=dummy-key"
   )
 
   local entry key

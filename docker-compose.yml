@@ -234,6 +234,25 @@ services:
       retries: 3
       start_period: 25s
 
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    hostname: open-webui.${INTRANET_DOMAIN}
+    restart: unless-stopped
+    networks:
+      - intranet
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${OPEN_WEBUI_PORT:-3002}:8080"
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      OPENAI_API_BASE_URL: ${OPEN_WEBUI_OPENAI_API_BASE_URL}
+      OPENAI_API_KEY: ${OPEN_WEBUI_OPENAI_API_KEY}
+    volumes:
+      - open_webui_data:/app/backend/data
+
+
 
 networks:
   intranet:

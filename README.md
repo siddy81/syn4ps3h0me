@@ -15,6 +15,7 @@ Aktuell umfasst das Projekt die automatische Einrichtung und Vorkonfiguration de
 - **Grafana**
 - **Pi-hole**
 - **Caddy**
+- **Open WebUI**
 
 Zusätzlich werden aktuell erste Komponenten für zukünftige KI-/Sprachfunktionen vorbereitet bzw. installiert, darunter:
 
