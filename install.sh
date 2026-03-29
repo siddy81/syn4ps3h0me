@@ -242,19 +242,28 @@ wait_for_hailo_ollama() {
 }
 
 ensure_default_llm_model() {
-  if ! command -v hailo-ollama >/dev/null 2>&1; then
-    warn "hailo-ollama CLI nicht gefunden; Standardmodell ${DEFAULT_LLM_MODEL} kann nicht geprüft/geladen werden."
+  log "Prüfe, ob Standardmodell ${DEFAULT_LLM_MODEL} verfügbar ist ..."
+  local tags_json
+  if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
+    warn "Konnte Modellliste nicht über http://localhost:8000/api/tags lesen. Überspringe Standardmodell-Prüfung."
     return
   fi
 
-  log "Prüfe, ob Standardmodell ${DEFAULT_LLM_MODEL} verfügbar ist ..."
-  if ${SUDO} -u "${SERVICE_USER}" hailo-ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "${DEFAULT_LLM_MODEL}"; then
+  if grep -q "\"name\":\"${DEFAULT_LLM_MODEL}\"" <<<"${tags_json}"; then
     log "Standardmodell ${DEFAULT_LLM_MODEL} ist bereits vorhanden."
     return
   fi
 
-  log "Lade Standardmodell ${DEFAULT_LLM_MODEL} über hailo-ollama pull ..."
-  ${SUDO} -u "${SERVICE_USER}" hailo-ollama pull "${DEFAULT_LLM_MODEL}" || fail "Download von ${DEFAULT_LLM_MODEL} fehlgeschlagen."
+  log "Lade Standardmodell ${DEFAULT_LLM_MODEL} über die lokale Hailo-Ollama API ..."
+  if ! curl --silent --show-error --fail \
+      -H "Content-Type: application/json" \
+      -d "{\"name\":\"${DEFAULT_LLM_MODEL}\",\"stream\":false}" \
+      "http://localhost:8000/api/pull" >/dev/null; then
+    warn "Download von ${DEFAULT_LLM_MODEL} fehlgeschlagen. Installation läuft weiter; bitte Modell ggf. manuell laden."
+    return
+  fi
+
+  log "Standardmodell ${DEFAULT_LLM_MODEL} wurde heruntergeladen."
 }
 
 
