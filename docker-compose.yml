@@ -237,12 +237,8 @@ services:
     hostname: open-webui.${INTRANET_DOMAIN}
     restart: always
     network_mode: host
-    networks:
-      - intranet
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    ports:
-      - "${OPEN_WEBUI_PORT}:8080"
     environment:
       TZ: ${TZ:-Europe/Berlin}
       OLLAMA_BASE_URL: ${OPEN_WEBUI_OLLAMA_BASE_URL}
