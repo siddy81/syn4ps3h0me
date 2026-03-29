@@ -244,7 +244,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${OPEN_WEBUI_PORT:-3000}:8080"
+      - "${OPEN_WEBUI_PORT}:8080"
     environment:
       TZ: ${TZ:-Europe/Berlin}
       OLLAMA_BASE_URL: ${OPEN_WEBUI_OLLAMA_BASE_URL}
