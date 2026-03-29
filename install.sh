@@ -419,7 +419,7 @@ summary() {
   curl --silent "http://localhost:8000/hailo/v1/list" || true
   echo
   echo "Hailo Modelle:"
-  ${SUDO} -u "${SERVICE_USER}" hailo-ollama list || true
+  curl --silent "http://localhost:8000/hailo/v1/list" || true
   echo
   echo "hailo-download-resources:"
   bash -lc "
