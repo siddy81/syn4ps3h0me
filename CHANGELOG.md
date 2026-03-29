@@ -9,7 +9,6 @@
 - Added `.gitattributes` to enforce LF endings for Pi-hole list/config files and prevent `Invalid Target ...^M` during gravity updates.
 - Replaced Pi-hole adlists with the exact requested set (StevenBlack, RPiList Phishing/Streaming/easylist/spam.mails, anudeepND, Firebog Easyprivacy/Easylist/Prigent-Ads/AdguardDNS).
 - Set default Pi-hole web password to `admin123` in `.env` and compose fallback.
-- Added `STACK_ADMIN_PASSWORD` as single central admin password for InfluxDB, Grafana, and Pi-hole, with optional per-service overrides (`INFLUXDB_PASSWORD`, `GF_ADMIN_PASSWORD`, `PIHOLE_WEBPASSWORD`).
 - Removed `.env.example` and `example.env` templates; `.env` is now the single directly-used runtime configuration file.
 - Refactored `docker-compose.yml` with consistent `container_name` values in lowercase-kebab-case, explicit `hostname` per service and shared `intranet` network.
 - Standardized service restart policy to `restart: unless-stopped` across all services.

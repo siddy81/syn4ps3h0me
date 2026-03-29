@@ -4,13 +4,12 @@ x-auth-env: &auth-env
   MQTT_USER: ${MQTT_USER}
   MQTT_PASSWORD: ${MQTT_PASSWORD}
 
-x-admin-env: &admin-env
-  STACK_ADMIN_PASSWORD: ${STACK_ADMIN_PASSWORD}
+
 
 x-influx-init-env: &influx-init-env
   DOCKER_INFLUXDB_INIT_MODE: ${INFLUXDB_INIT_MODE}
   DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME}
-  DOCKER_INFLUXDB_INIT_PASSWORD: ${STACK_ADMIN_PASSWORD}
+  DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD}
   DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG}
   DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET}
   DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_WRITE_TOKEN}
@@ -101,9 +100,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      <<: *admin-env
       GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${STACK_ADMIN_PASSWORD}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       GF_FEATURE_TOGGLES_ENABLE: publicDashboards
       INFLUXDB_ORG: ${INFLUXDB_ORG:-home}
       INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
@@ -128,10 +126,9 @@ services:
       - 1.1.1.1
       - 9.9.9.9
     environment:
-      <<: *admin-env
       TZ: ${TZ:-Europe/Berlin}
       # Pi-hole Docker config (FTLCONF_*)
-      FTLCONF_webserver_api_password: ${STACK_ADMIN_PASSWORD}
+      FTLCONF_webserver_api_password: ${PIHOLE_API_PASSWORD}
       FTLCONF_webserver_interface_theme: ${PIHOLE_WEBTHEME:-default-darker}
       FTLCONF_dns_upstreams: ${PIHOLE_DNS_UPSTREAMS:-1.1.1.1;1.0.0.1;1.1.1.1;9.9.9.9}
       FTLCONF_dns_rateLimit_interval: 60
@@ -139,7 +136,7 @@ services:
       FTLCONF_dns_dnssec: ${PIHOLE_DNSSEC:-true}
       FTLCONF_dns_listeningMode: all
       # Backward-compatible aliases
-      WEBPASSWORD: ${STACK_ADMIN_PASSWORD}
+      WEBPASSWORD: ${PIHOLE_ADMIN_PASSWORD}
       WEBTHEME: ${PIHOLE_WEBTHEME:-default-darker}
       DNSMASQ_LISTENING: all
       FTLCONF_LOCAL_IPV4: ${RPI_IP}
