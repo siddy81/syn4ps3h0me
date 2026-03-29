@@ -176,9 +176,9 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN}
+      GRAFANA_DOMAIN: ${PIHOLE_DOMAIN}
       PIHOLE_DOMAIN: ${PIHOLE_DOMAIN}
-      LEGACY_HOST_DOMAIN: ${LEGACY_HOST_DOMAIN}
+      LEGACY_HOST_DOMAIN: ${PIHOLE_DOMAIN}
       LEGACY_HOST_IP: ${LEGACY_HOST_IP}
     command: ["caddy", "run", "--config", "/etc/caddy/config.json"]
     volumes:
