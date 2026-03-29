@@ -251,10 +251,7 @@
         "policies": [
           {
             "subjects": [
-              "{env.GRAFANA_DOMAIN}",
-              "{env.PIHOLE_DOMAIN}",
-              "{env.LEGACY_HOST_DOMAIN}",
-              "{env.LEGACY_HOST_IP}"
+              "{env.PIHOLE_DOMAIN}"
             ],
             "issuers": [
               {

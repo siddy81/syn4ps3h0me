@@ -23,6 +23,7 @@ SERVICE_FILE="/etc/systemd/system/hailo-ollama.service"
 
 DEB_URL="https://dev-public.hailo.ai/2025_12/Hailo10/hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEB_FILE="hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
+DEFAULT_LLM_MODEL="llama3.2:3b"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
 
@@ -240,6 +241,30 @@ wait_for_hailo_ollama() {
   warn "hailo-ollama antwortet noch nicht auf http://localhost:8000/hailo/v1/list"
 }
 
+ensure_default_llm_model() {
+  log "Prüfe, ob Standardmodell ${DEFAULT_LLM_MODEL} verfügbar ist ..."
+  local tags_json
+  if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
+    warn "Konnte Modellliste nicht über http://localhost:8000/api/tags lesen. Überspringe Standardmodell-Prüfung."
+    return
+  fi
+
+  if grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${DEFAULT_LLM_MODEL}\"|\"${DEFAULT_LLM_MODEL}\"" <<<"${tags_json}"; then
+    log "Standardmodell ${DEFAULT_LLM_MODEL} ist bereits vorhanden."
+    return
+  fi
+
+  log "Lade Standardmodell ${DEFAULT_LLM_MODEL} über die lokale Hailo-Ollama API ..."
+  if ! curl --silent --show-error --fail \
+      -H "Content-Type: application/json" \
+      -d "{\"name\":\"${DEFAULT_LLM_MODEL}\",\"stream\":false}" \
+      "http://localhost:8000/api/pull" >/dev/null; then
+    warn "Download von ${DEFAULT_LLM_MODEL} fehlgeschlagen. Installation läuft weiter; bitte Modell ggf. manuell laden."
+    return
+  fi
+
+  log "Standardmodell ${DEFAULT_LLM_MODEL} wurde heruntergeladen."
+}
 
 
 ensure_voice_env_defaults() {
@@ -254,7 +279,7 @@ ensure_voice_env_defaults() {
   local defaults=(
     "VOICE_HOST_UID=${uid}"
     "VOICE_HOST_GID=${gid}"
-    "VOICE_WAKEWORD_MODEL=hey_jarvis"
+    "VOICE_WAKEWORD_MODEL=jarvis"
     "VOICE_WAKEWORD_MODEL_PATH="
     "VOICE_WAKE_WORD_THRESHOLD=0.5"
     "VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0"
@@ -269,6 +294,10 @@ ensure_voice_env_defaults() {
     "VOICE_WHISPER_LANGUAGE=de"
     "VOICE_AUDIO_SAMPLE_RATE=16000"
     "VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30"
+    "OPEN_WEBUI_PORT=3000"
+    "OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:latest"
+    "OPEN_WEBUI_OLLAMA_BASE_URL=http://host.docker.internal:8000"
+    "OPEN_WEBUI_DEFAULT_MODELS=${DEFAULT_LLM_MODEL}"
   )
 
   local entry key
@@ -389,6 +418,9 @@ summary() {
   echo "hailo API:"
   curl --silent "http://localhost:8000/hailo/v1/list" || true
   echo
+  echo "Hailo Modelle:"
+  curl --silent "http://localhost:8000/hailo/v1/list" || true
+  echo
   echo "hailo-download-resources:"
   bash -lc "
     set +u
@@ -420,6 +452,7 @@ main() {
   write_hailo_service
   enable_and_start_hailo_service
   wait_for_hailo_ollama
+  ensure_default_llm_model
 
   ensure_voice_env_defaults
   voice_pipeline_preflight
