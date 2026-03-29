@@ -249,7 +249,7 @@ ensure_default_llm_model() {
     return
   fi
 
-  if grep -q "\"name\":\"${DEFAULT_LLM_MODEL}\"" <<<"${tags_json}"; then
+  if grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${DEFAULT_LLM_MODEL}\"|\"${DEFAULT_LLM_MODEL}\"" <<<"${tags_json}"; then
     log "Standardmodell ${DEFAULT_LLM_MODEL} ist bereits vorhanden."
     return
   fi
