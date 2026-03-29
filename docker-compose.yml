@@ -234,22 +234,22 @@ services:
       retries: 3
       start_period: 25s
 
-open-webui:
-  image: ghcr.io/open-webui/open-webui:main
-  container_name: open-webui
-  hostname: open-webui.${INTRANET_DOMAIN}
-  restart: always
-  networks:
-    - intranet
-  extra_hosts:
-    - "host.docker.internal:host-gateway"
-  ports:
-    - "${OPEN_WEBUI_PORT:-3000}:8080"
-  environment:
-    TZ: ${TZ:-Europe/Berlin}
-    OLLAMA_BASE_URL: ${OPEN_WEBUI_OLLAMA_BASE_URL:-http://host.docker.internal:8000}
-  volumes:
-    - open-webui:/app/backend/data
+  open-webui:
+    image: ${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}
+    container_name: open-webui
+    hostname: open-webui.${INTRANET_DOMAIN}
+    restart: always
+    networks:
+      - intranet
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${OPEN_WEBUI_PORT:-3000}:8080"
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      OLLAMA_BASE_URL: ${OPEN_WEBUI_OLLAMA_BASE_URL:-http://host.docker.internal:8000}
+    volumes:
+      - open-webui:/app/backend/data
 
 
 
@@ -264,4 +264,4 @@ volumes:
   mosquitto_data:
   mosquitto_log:
   caddy_data:
-  open_webui_data:
+  open-webui:

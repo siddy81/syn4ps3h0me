@@ -270,6 +270,7 @@ ensure_voice_env_defaults() {
     "VOICE_AUDIO_SAMPLE_RATE=16000"
     "VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30"
     "OPEN_WEBUI_PORT=3000"
+    "OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:latest"
     "OPEN_WEBUI_OLLAMA_BASE_URL=http://host.docker.internal:8000"
   )
 
