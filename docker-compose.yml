@@ -236,6 +236,7 @@ services:
     container_name: open-webui
     hostname: open-webui.${INTRANET_DOMAIN}
     restart: always
+    network_mode: host
     networks:
       - intranet
     extra_hosts:
