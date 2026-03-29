@@ -235,7 +235,7 @@ services:
       start_period: 25s
 
   open-webui:
-    image: ${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}
+    image: ${OPEN_WEBUI_IMAGE}
     container_name: open-webui
     hostname: open-webui.${INTRANET_DOMAIN}
     restart: always
