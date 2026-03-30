@@ -27,6 +27,14 @@ DEFAULT_LLM_MODEL="llama3.2:3b"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
 
+MODULE_SMARTHOME=false
+MODULE_PIHOLE=false
+MODULE_CADDY=false
+MODULE_VOICE=false
+MODULE_LLM_CHAT=false
+
+declare -a COMPOSE_SERVICES=()
+
 # Script liegt in ~/workspace/Siddys-Shelly-Smart-Home/install.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${SCRIPT_DIR}"
@@ -39,6 +47,18 @@ HAILO_APPS_DIR="${WORKSPACE_DIR}/hailo-apps"
 log()  { echo "[INFO]  $*"; }
 warn() { echo "[WARN]  $*" >&2; }
 fail() { echo "[ERROR] $*" >&2; exit 1; }
+
+is_yes() {
+  local answer="${1:-}"
+  [[ "${answer}" =~ ^([JjYy]|[Jj][Aa]|[Yy][Ee][Ss])$ ]]
+}
+
+ask_module() {
+  local prompt="$1"
+  local answer=""
+  read -r -p "${prompt} [j/N]: " answer
+  is_yes "${answer}"
+}
 
 # ----------------------------
 # Root / sudo
@@ -80,6 +100,48 @@ install_base_packages() {
   log "Installiere Basis-Pakete ..."
   ${SUDO} apt-get update
   ${SUDO} apt-get install -y curl wget git ca-certificates portaudio19-dev
+}
+
+select_modules() {
+  echo
+  echo "============================================================"
+  echo "Modulauswahl"
+  echo "============================================================"
+  echo "Docker/Basis wird immer installiert."
+  echo "Bitte auswählen, welche Module installiert werden sollen:"
+  echo
+
+  if ask_module "1) Smart Home Shelly Überwachung (mosquitto, influxdb, telegraf, grafana)"; then
+    MODULE_SMARTHOME=true
+    COMPOSE_SERVICES+=(mosquitto influxdb telegraf grafana)
+  fi
+
+  if ask_module "2) Pi-hole"; then
+    MODULE_PIHOLE=true
+    COMPOSE_SERVICES+=(pihole)
+  fi
+
+  if ask_module "3) Caddy"; then
+    MODULE_CADDY=true
+    COMPOSE_SERVICES+=(caddy)
+  fi
+
+  if ask_module "4) Voice Pipeline"; then
+    MODULE_VOICE=true
+    COMPOSE_SERVICES+=(voice-pipeline)
+  fi
+
+  if ask_module "5) LLM-Chat (open-webui, hailo-ollama, model download)"; then
+    MODULE_LLM_CHAT=true
+    COMPOSE_SERVICES+=(open-webui)
+  fi
+
+  if [[ ${#COMPOSE_SERVICES[@]} -eq 0 ]]; then
+    warn "Kein Modul ausgewählt. Es wird nur Docker/Basis installiert."
+  else
+    mapfile -t COMPOSE_SERVICES < <(printf "%s\n" "${COMPOSE_SERVICES[@]}" | awk '!seen[$0]++')
+    log "Ausgewählte Compose-Services: ${COMPOSE_SERVICES[*]}"
+  fi
 }
 
 # ----------------------------
@@ -371,15 +433,20 @@ compose_up() {
     fail "Keine Compose-Datei in ${PROJECT_DIR} gefunden."
   fi
 
+  if [[ ${#COMPOSE_SERVICES[@]} -eq 0 ]]; then
+    log "Keine Compose-Services ausgewählt. Überspringe docker compose up."
+    return
+  fi
+
   if ${SUDO} docker compose version >/dev/null 2>&1; then
-    log "Starte Compose-Stack mit docker compose up -d ..."
-    ${SUDO} docker compose up -d
+    log "Starte ausgewählte Compose-Services mit docker compose up -d ..."
+    ${SUDO} docker compose up -d "${COMPOSE_SERVICES[@]}"
     return
   fi
 
   if command -v docker-compose >/dev/null 2>&1; then
-    log "Starte Compose-Stack mit docker-compose up -d ..."
-    ${SUDO} docker-compose up -d
+    log "Starte ausgewählte Compose-Services mit docker-compose up -d ..."
+    ${SUDO} docker-compose up -d "${COMPOSE_SERVICES[@]}"
     return
   fi
 
@@ -409,54 +476,76 @@ summary() {
   echo "hailo-ollama:"
   command -v hailo-ollama || true
   echo
-  echo "hailo-ollama Service enabled:"
-  ${SUDO} systemctl is-enabled hailo-ollama.service || true
+  if [[ "${MODULE_LLM_CHAT}" == "true" ]]; then
+    echo "hailo-ollama Service enabled:"
+    ${SUDO} systemctl is-enabled hailo-ollama.service || true
+    echo
+    echo "hailo-ollama Service active:"
+    ${SUDO} systemctl is-active hailo-ollama.service || true
+    echo
+    echo "hailo API:"
+    curl --silent "http://localhost:8000/hailo/v1/list" || true
+    echo
+    echo "Hailo Modelle:"
+    curl --silent "http://localhost:8000/hailo/v1/list" || true
+    echo
+  fi
+
+  if [[ "${MODULE_VOICE}" == "true" ]]; then
+    echo "hailo-download-resources:"
+    bash -lc "
+      set +u
+      cd '${HAILO_APPS_DIR}' 2>/dev/null || exit 0
+      source setup_env.sh 2>/dev/null || exit 0
+      set -u
+      command -v hailo-download-resources || true
+    "
+    echo
+    echo "Whisper-Dateien:"
+    find /usr/local/hailo/resources -iname '*whisper*' 2>/dev/null || true
+    echo
+    echo "Voice-Pipeline files:"
+    ls -1 "${PROJECT_DIR}/voice-pipeline" 2>/dev/null || true
+  fi
   echo
-  echo "hailo-ollama Service active:"
-  ${SUDO} systemctl is-active hailo-ollama.service || true
-  echo
-  echo "hailo API:"
-  curl --silent "http://localhost:8000/hailo/v1/list" || true
-  echo
-  echo "Hailo Modelle:"
-  curl --silent "http://localhost:8000/hailo/v1/list" || true
-  echo
-  echo "hailo-download-resources:"
-  bash -lc "
-    set +u
-    cd '${HAILO_APPS_DIR}' 2>/dev/null || exit 0
-    source setup_env.sh 2>/dev/null || exit 0
-    set -u
-    command -v hailo-download-resources || true
-  "
-  echo
-  echo "Whisper-Dateien:"
-  find /usr/local/hailo/resources -iname '*whisper*' 2>/dev/null || true
-  echo
-  echo "Voice-Pipeline files:"
-  ls -1 "${PROJECT_DIR}/voice-pipeline" 2>/dev/null || true
+  echo "Installierte/Ausgewählte Compose-Services:"
+  if [[ ${#COMPOSE_SERVICES[@]} -eq 0 ]]; then
+    echo "(keine)"
+  else
+    printf -- "- %s\n" "${COMPOSE_SERVICES[@]}"
+  fi
   echo "============================================================"
 }
 
 main() {
   require_root_or_sudo
   detect_real_user
+  select_modules
   install_base_packages
   install_docker_if_needed
   ensure_docker_group_membership
 
-  setup_hailo_apps_and_whisper
+  if [[ "${MODULE_VOICE}" == "true" ]]; then
+    setup_hailo_apps_and_whisper
+  fi
 
-  download_deb_if_needed
-  install_hailo_ollama_if_needed
-  write_hailo_service
-  enable_and_start_hailo_service
-  wait_for_hailo_ollama
-  ensure_default_llm_model
+  if [[ "${MODULE_LLM_CHAT}" == "true" ]]; then
+    download_deb_if_needed
+    install_hailo_ollama_if_needed
+    write_hailo_service
+    enable_and_start_hailo_service
+    wait_for_hailo_ollama
+    ensure_default_llm_model
+  fi
 
-  ensure_voice_env_defaults
-  voice_pipeline_preflight
-  build_voice_service_image
+  if [[ "${MODULE_VOICE}" == "true" || "${MODULE_LLM_CHAT}" == "true" ]]; then
+    ensure_voice_env_defaults
+  fi
+
+  if [[ "${MODULE_VOICE}" == "true" ]]; then
+    voice_pipeline_preflight
+    build_voice_service_image
+  fi
 
   compose_up
   summary
