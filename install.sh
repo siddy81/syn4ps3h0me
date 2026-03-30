@@ -103,6 +103,8 @@ install_base_packages() {
 }
 
 select_modules() {
+  local install_all=false
+
   echo
   echo "============================================================"
   echo "Modulauswahl"
@@ -111,29 +113,44 @@ select_modules() {
   echo "Bitte auswählen, welche Module installiert werden sollen:"
   echo
 
-  if ask_module "1) Smart Home Shelly Überwachung (mosquitto, influxdb, telegraf, grafana)"; then
+  if ask_module "Alles installieren (alle Module)"; then
+    install_all=true
+  fi
+
+  if [[ "${install_all}" == "true" ]]; then
     MODULE_SMARTHOME=true
-    COMPOSE_SERVICES+=(mosquitto influxdb telegraf grafana)
-  fi
-
-  if ask_module "2) Pi-hole"; then
     MODULE_PIHOLE=true
-    COMPOSE_SERVICES+=(pihole)
-  fi
-
-  if ask_module "3) Caddy"; then
     MODULE_CADDY=true
-    COMPOSE_SERVICES+=(caddy)
-  fi
-
-  if ask_module "4) Voice Pipeline"; then
     MODULE_VOICE=true
-    COMPOSE_SERVICES+=(voice-pipeline)
-  fi
-
-  if ask_module "5) LLM-Chat (open-webui, hailo-ollama, model download)"; then
     MODULE_LLM_CHAT=true
-    COMPOSE_SERVICES+=(open-webui)
+    COMPOSE_SERVICES+=(mosquitto influxdb telegraf grafana pihole caddy voice-pipeline open-webui)
+    log "Option 'Alles installieren' gewählt."
+  else
+
+    if ask_module "1) Smart Home Shelly Überwachung (mosquitto, influxdb, telegraf, grafana)"; then
+      MODULE_SMARTHOME=true
+      COMPOSE_SERVICES+=(mosquitto influxdb telegraf grafana)
+    fi
+
+    if ask_module "2) Pi-hole"; then
+      MODULE_PIHOLE=true
+      COMPOSE_SERVICES+=(pihole)
+    fi
+
+    if ask_module "3) Caddy"; then
+      MODULE_CADDY=true
+      COMPOSE_SERVICES+=(caddy)
+    fi
+
+    if ask_module "4) Voice Pipeline"; then
+      MODULE_VOICE=true
+      COMPOSE_SERVICES+=(voice-pipeline)
+    fi
+
+    if ask_module "5) LLM-Chat (open-webui, hailo-ollama, model download)"; then
+      MODULE_LLM_CHAT=true
+      COMPOSE_SERVICES+=(open-webui)
+    fi
   fi
 
   if [[ ${#COMPOSE_SERVICES[@]} -eq 0 ]]; then
