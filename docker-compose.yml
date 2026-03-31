@@ -232,7 +232,7 @@ services:
       start_period: 25s
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.8.12
+    image: ${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:main}
     container_name: open-webui
     hostname: open-webui.${INTRANET_DOMAIN}
     restart: always
@@ -241,7 +241,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       TZ: ${TZ:-Europe/Berlin}
-      OLLAMA_BASE_URL: ${OPEN_WEBUI_OLLAMA_BASE_URL}
+      OLLAMA_BASE_URL: ${OPEN_WEBUI_OLLAMA_BASE_URL:-http://127.0.0.1:8000}
       WEBUI_ADMIN_EMAIL: ${OPEN_WEBUI_ADMIN_EMAIL}
       WEBUI_ADMIN_PASSWORD: ${OPEN_WEBUI_ADMIN_PASSWORD}
       WEBUI_ADMIN_NAME: ${OPEN_WEBUI_ADMIN_NAME}
