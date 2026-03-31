@@ -241,7 +241,17 @@ setup_hailo_apps_and_whisper() {
   cd hailo-apps
 
   log "Führe sudo ./install.sh aus ..."
-  ${SUDO} ./install.sh
+  if ! ${SUDO} ./install.sh; then
+    warn "hailo-apps install.sh meldete Fehler. Versuche automatische Reparatur für fehlende Hailo-Komponenten ..."
+    if [[ -x "./scripts/hailo_installer.sh" ]]; then
+      log "Starte ./scripts/hailo_installer.sh ..."
+      ${SUDO} ./scripts/hailo_installer.sh
+      log "Starte hailo-apps ./install.sh erneut ..."
+      ${SUDO} ./install.sh
+    else
+      fail "hailo-apps Installation fehlgeschlagen und ./scripts/hailo_installer.sh wurde nicht gefunden."
+    fi
+  fi
 
   [[ -f "setup_env.sh" ]] || fail "setup_env.sh wurde nicht gefunden in ${PWD}"
 
@@ -301,6 +311,11 @@ install_hailo_h10_stack() {
   ${SUDO} apt-get update
   ${SUDO} apt-get install -y dkms
   ${SUDO} apt-get install -y hailo-h10-all
+
+  if ! command -v hailortcli >/dev/null 2>&1; then
+    warn "hailortcli wurde nicht gefunden. Versuche HailoRT nachzuinstallieren ..."
+    ${SUDO} apt-get install -y hailort || true
+  fi
 }
 
 # ----------------------------
