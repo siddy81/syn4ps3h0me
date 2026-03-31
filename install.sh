@@ -24,7 +24,6 @@ SERVICE_FILE="/etc/systemd/system/hailo-ollama.service"
 DEB_URL="https://dev-public.hailo.ai/2025_12/Hailo10/hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEB_FILE="hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEFAULT_LLM_MODEL="llama3.2:3b"
-FALLBACK_LLM_MODELS=("llama3.2:1b" "qwen2.5:3b")
 ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
@@ -122,6 +121,17 @@ install_base_packages() {
   log "Installiere Basis-Pakete ..."
   ${SUDO} apt-get update
   ${SUDO} apt-get install -y curl wget git ca-certificates portaudio19-dev
+}
+
+repair_system_packages() {
+  log "Prüfe/repairiere ggf. Paketstatus (dpkg/apt) ..."
+  ${SUDO} dpkg --configure -a || true
+  ${SUDO} apt -f install -y || true
+  ${SUDO} apt-get update
+  ${SUDO} apt-get full-upgrade -y || true
+  ${SUDO} apt-get clean || true
+  ${SUDO} apt-get autoclean || true
+  ${SUDO} apt-get autoremove -y || true
 }
 
 select_modules() {
@@ -279,10 +289,18 @@ install_hailo_ollama_if_needed() {
   ${SUDO} dpkg -i "./${DEB_FILE}" || true
 
   log "Behebe ggf. Abhängigkeiten ..."
+  ${SUDO} dpkg --configure -a || true
   ${SUDO} apt-get update
   ${SUDO} apt-get -f install -y
 
   command -v hailo-ollama >/dev/null 2>&1 || fail "hailo-ollama wurde nach der Installation nicht gefunden."
+}
+
+install_hailo_h10_stack() {
+  log "Installiere Hailo-Basispakete (dkms, hailo-h10-all) ..."
+  ${SUDO} apt-get update
+  ${SUDO} apt-get install -y dkms
+  ${SUDO} apt-get install -y hailo-h10-all
 }
 
 # ----------------------------
@@ -356,35 +374,25 @@ ensure_default_llm_model() {
     return
   fi
 
-  local model candidates
-  candidates=("${DEFAULT_LLM_MODEL}" "${FALLBACK_LLM_MODELS[@]}")
-
-  for model in "${candidates[@]}"; do
-    log "Lade Modell ${model} über die lokale Hailo-Ollama API ..."
-    local response_file http_code
-    response_file="$(mktemp)"
-    http_code="$(curl --silent --show-error \
-      -o "${response_file}" \
-      -w "%{http_code}" \
+  log "Lade Standardmodell ${DEFAULT_LLM_MODEL} über die lokale Hailo-Ollama API ..."
+  if ! curl --silent \
+      "http://localhost:8000/api/pull" \
       -H "Content-Type: application/json" \
-      -d "{\"name\":\"${model}\",\"stream\":false}" \
-      "http://localhost:8000/api/pull" || true)"
+      -d "{ \"model\": \"${DEFAULT_LLM_MODEL}\", \"stream\" : true }" >/dev/null; then
+    warn "Download von ${DEFAULT_LLM_MODEL} fehlgeschlagen. Installation läuft weiter; bitte Modell ggf. manuell laden."
+    return
+  fi
 
-    if [[ "${http_code}" == "200" ]]; then
-      ACTIVE_LLM_MODEL="${model}"
-      rm -f "${response_file}"
-      log "Modell ${model} wurde heruntergeladen."
-      return
-    fi
+  if curl --silent --fail \
+      "http://localhost:8000/api/chat" \
+      -H "Content-Type: application/json" \
+      -d "{\"model\":\"${DEFAULT_LLM_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Translate to French: The cat is on the table.\"}]}" >/dev/null; then
+    ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
+    log "Modelltest über /api/chat erfolgreich."
+    return
+  fi
 
-    warn "Download von ${model} fehlgeschlagen (HTTP ${http_code})."
-    if [[ -s "${response_file}" ]]; then
-      warn "API-Antwort: $(tr '\n' ' ' < "${response_file}")"
-    fi
-    rm -f "${response_file}"
-  done
-
-  warn "Keines der gewünschten Modelle konnte geladen werden. Installation läuft weiter; bitte Modell manuell laden."
+  warn "Modelltest über /api/chat ist fehlgeschlagen. Bitte Modell-/Backend-Status prüfen."
 }
 
 
@@ -416,7 +424,7 @@ ensure_voice_env_defaults() {
     "VOICE_AUDIO_SAMPLE_RATE=16000"
     "VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30"
     "OPEN_WEBUI_PORT=3000"
-    "OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:latest"
+    "OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:main"
     "OPEN_WEBUI_OLLAMA_BASE_URL=http://127.0.0.1:8000"
     "OPEN_WEBUI_ENABLE_PERSISTENT_CONFIG=false"
     "OPEN_WEBUI_DEFAULT_MODELS=${ACTIVE_LLM_MODEL}"
@@ -432,6 +440,8 @@ ensure_voice_env_defaults() {
   done
 
   upsert_env_key "OPEN_WEBUI_DEFAULT_MODELS" "${ACTIVE_LLM_MODEL}" ".env"
+  upsert_env_key "OPEN_WEBUI_OLLAMA_BASE_URL" "http://127.0.0.1:8000" ".env"
+  upsert_env_key "OPEN_WEBUI_IMAGE" "ghcr.io/open-webui/open-webui:main" ".env"
   log "Setze OPEN_WEBUI_DEFAULT_MODELS auf ${ACTIVE_LLM_MODEL}"
 }
 
@@ -516,6 +526,25 @@ compose_up() {
   fail "Weder 'docker compose' noch 'docker-compose' ist verfügbar."
 }
 
+ensure_open_webui_runtime() {
+  cd "${PROJECT_DIR}"
+
+  if [[ "${MODULE_LLM_CHAT}" != "true" ]]; then
+    return
+  fi
+
+  log "Ziehe Open WebUI Image (main) ..."
+  ${SUDO} docker pull ghcr.io/open-webui/open-webui:main || warn "Konnte Open WebUI Image nicht aktualisieren."
+
+  if ${SUDO} docker compose version >/dev/null 2>&1; then
+    log "Recreate open-webui mit Compose ..."
+    ${SUDO} docker compose up -d --force-recreate open-webui || warn "Compose-Recreate für open-webui fehlgeschlagen."
+  elif command -v docker-compose >/dev/null 2>&1; then
+    log "Recreate open-webui mit docker-compose ..."
+    ${SUDO} docker-compose up -d --force-recreate open-webui || warn "docker-compose Recreate für open-webui fehlgeschlagen."
+  fi
+}
+
 # ----------------------------
 # Summary
 # ----------------------------
@@ -593,6 +622,8 @@ main() {
   fi
 
   if [[ "${MODULE_LLM_CHAT}" == "true" ]]; then
+    repair_system_packages
+    install_hailo_h10_stack
     download_deb_if_needed
     install_hailo_ollama_if_needed
     write_hailo_service
@@ -611,6 +642,7 @@ main() {
   fi
 
   compose_up
+  ensure_open_webui_runtime
   summary
 }
 
