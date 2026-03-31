@@ -527,3 +527,36 @@ Details zu Änderungen und Ports stehen in `CHANGELOG.md`.
 Damit die Kosten im Dashboard korrekt dargestellt werden, 
 müsst ihr in der Datei `shelly-overview.json` im Bereich 
 **Gesamtkosten** den Standardwert `0.3577` durch euren eigenen Strompreis ersetzen.
+
+## Voice Pipeline (Wakeword → STT → LLM → TTS)
+
+Die Voice-Pipeline liegt unter `voice-pipeline/app` und ist modular aufgebaut:
+
+- `voice_pipeline/wakeword` – Wake-Word-Erkennung
+- `voice_pipeline/audio` – Mikrofonaufnahme inkl. Stille-/Timeout-Stop
+- `voice_pipeline/stt` – Hailo Whisper (`hailo_local_cmd`)
+- `voice_pipeline/llm` – lokaler REST-Client (`POST /api/chat`)
+- `voice_pipeline/tts` – Piper TTS (lokale deutsche Stimme)
+- `voice_pipeline/playback` – Audioausgabe über lokale Lautsprecher
+- `voice_pipeline/rules` – vorbereitete Intent-/Tool-Struktur
+- `voice_pipeline/orchestrator.py` – End-to-End Steuerung
+
+### Wichtige Umgebungsvariablen
+
+- `AUDIO_MIC_DEVICE`
+- `AUDIO_OUTPUT_DEVICE`
+- `AUDIO_SILENCE_TIMEOUT_SECONDS`
+- `AUDIO_MAX_RECORDING_DURATION_SECONDS`
+- `LLM_API_ENDPOINT`
+- `LLM_MODEL_NAME`
+- `TTS_VOICE`
+- `VOICE_DEBUG_LOGGING`
+
+### Start
+
+```bash
+cd voice-pipeline
+pip install -r requirements.txt
+python -m app.main
+```
+
