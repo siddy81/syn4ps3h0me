@@ -24,6 +24,8 @@ SERVICE_FILE="/etc/systemd/system/hailo-ollama.service"
 DEB_URL="https://dev-public.hailo.ai/2025_12/Hailo10/hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEB_FILE="hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEFAULT_LLM_MODEL="llama3.2:3b"
+FALLBACK_LLM_MODELS=("llama3.2:1b" "qwen2.5:3b")
+ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
 
@@ -58,6 +60,26 @@ ask_module() {
   local answer=""
   read -r -p "${prompt} [j/N]: " answer
   is_yes "${answer}"
+}
+
+upsert_env_key() {
+  local key="$1"
+  local value="$2"
+  local env_file="$3"
+
+  [[ -f "${env_file}" ]] || return
+
+  if grep -qE "^${key}=" "${env_file}"; then
+    awk -v k="${key}" -v v="${value}" '
+      BEGIN { replaced=0 }
+      $0 ~ ("^" k "=") { print k "=" v; replaced=1; next }
+      { print }
+      END { if (!replaced) print k "=" v }
+    ' "${env_file}" > "${env_file}.tmp"
+    mv "${env_file}.tmp" "${env_file}"
+  else
+    echo "${key}=${value}" >> "${env_file}"
+  fi
 }
 
 # ----------------------------
@@ -330,19 +352,39 @@ ensure_default_llm_model() {
 
   if grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${DEFAULT_LLM_MODEL}\"|\"${DEFAULT_LLM_MODEL}\"" <<<"${tags_json}"; then
     log "Standardmodell ${DEFAULT_LLM_MODEL} ist bereits vorhanden."
+    ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
     return
   fi
 
-  log "Lade Standardmodell ${DEFAULT_LLM_MODEL} über die lokale Hailo-Ollama API ..."
-  if ! curl --silent --show-error --fail \
+  local model candidates
+  candidates=("${DEFAULT_LLM_MODEL}" "${FALLBACK_LLM_MODELS[@]}")
+
+  for model in "${candidates[@]}"; do
+    log "Lade Modell ${model} über die lokale Hailo-Ollama API ..."
+    local response_file http_code
+    response_file="$(mktemp)"
+    http_code="$(curl --silent --show-error \
+      -o "${response_file}" \
+      -w "%{http_code}" \
       -H "Content-Type: application/json" \
-      -d "{\"name\":\"${DEFAULT_LLM_MODEL}\",\"stream\":false}" \
-      "http://localhost:8000/api/pull" >/dev/null; then
-    warn "Download von ${DEFAULT_LLM_MODEL} fehlgeschlagen. Installation läuft weiter; bitte Modell ggf. manuell laden."
-    return
-  fi
+      -d "{\"name\":\"${model}\",\"stream\":false}" \
+      "http://localhost:8000/api/pull" || true)"
 
-  log "Standardmodell ${DEFAULT_LLM_MODEL} wurde heruntergeladen."
+    if [[ "${http_code}" == "200" ]]; then
+      ACTIVE_LLM_MODEL="${model}"
+      rm -f "${response_file}"
+      log "Modell ${model} wurde heruntergeladen."
+      return
+    fi
+
+    warn "Download von ${model} fehlgeschlagen (HTTP ${http_code})."
+    if [[ -s "${response_file}" ]]; then
+      warn "API-Antwort: $(tr '\n' ' ' < "${response_file}")"
+    fi
+    rm -f "${response_file}"
+  done
+
+  warn "Keines der gewünschten Modelle konnte geladen werden. Installation läuft weiter; bitte Modell manuell laden."
 }
 
 
@@ -377,7 +419,7 @@ ensure_voice_env_defaults() {
     "OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:latest"
     "OPEN_WEBUI_OLLAMA_BASE_URL=http://127.0.0.1:8000"
     "OPEN_WEBUI_ENABLE_PERSISTENT_CONFIG=false"
-    "OPEN_WEBUI_DEFAULT_MODELS=${DEFAULT_LLM_MODEL}"
+    "OPEN_WEBUI_DEFAULT_MODELS=${ACTIVE_LLM_MODEL}"
   )
 
   local entry key
@@ -388,6 +430,9 @@ ensure_voice_env_defaults() {
       log "Ergänze fehlende .env Vorgabe: ${key}"
     fi
   done
+
+  upsert_env_key "OPEN_WEBUI_DEFAULT_MODELS" "${ACTIVE_LLM_MODEL}" ".env"
+  log "Setze OPEN_WEBUI_DEFAULT_MODELS auf ${ACTIVE_LLM_MODEL}"
 }
 
 build_voice_service_image() {
