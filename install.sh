@@ -447,7 +447,24 @@ setup_hailo_apps_and_whisper() {
     log "Klonen von hailo-apps nach ${WORKSPACE_DIR}/hailo-apps ..."
     ${SUDO} -u "${REAL_USER}" git clone "${HAILO_APPS_REPO}"
   else
-    log "hailo-apps existiert bereits in ${WORKSPACE_DIR}/hailo-apps"
+    log "hailo-apps existiert bereits in ${WORKSPACE_DIR}/hailo-apps – aktualisiere Repository ..."
+    ${SUDO} -u "${REAL_USER}" git -C hailo-apps remote set-url origin "${HAILO_APPS_REPO}"
+    ${SUDO} -u "${REAL_USER}" git -C hailo-apps fetch --all --tags --prune
+
+    local current_branch default_branch
+    current_branch="$(${SUDO} -u "${REAL_USER}" git -C hailo-apps rev-parse --abbrev-ref HEAD)"
+    default_branch="$(${SUDO} -u "${REAL_USER}" git -C hailo-apps symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
+    default_branch="${default_branch:-main}"
+
+    if [[ "${current_branch}" == "HEAD" ]]; then
+      log "Detached HEAD erkannt. Wechsle auf Default-Branch '${default_branch}'."
+      ${SUDO} -u "${REAL_USER}" git -C hailo-apps checkout "${default_branch}"
+      current_branch="${default_branch}"
+    fi
+
+    if ! ${SUDO} -u "${REAL_USER}" git -C hailo-apps pull --ff-only origin "${current_branch}"; then
+      fail "Konnte hailo-apps nicht per fast-forward aktualisieren. Bitte lokale Änderungen prüfen/stashen."
+    fi
   fi
 
   cd hailo-apps
