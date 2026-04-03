@@ -6,14 +6,13 @@ DO_REBOOT="${DO_REBOOT:-0}"
 
 SERVICE_USER="${SUDO_USER:-$USER}"
 SERVICE_HOME="$(getent passwd "$SERVICE_USER" | cut -d: -f6)"
-UPGRADE_DIR="${SERVICE_HOME}/hailo-upg"
-MANUAL_DEB_DIR="${UPGRADE_DIR}/manual-debs"
+UPGRADE_DIR="/home/siddy/hailo-upg"
 
 PKG_HAILORT="hailort_${TARGET_HAILORT_VERSION}_arm64.deb"
 PKG_PCIE="hailort-pcie-driver_${TARGET_HAILORT_VERSION}_all.deb"
 
-FILE_HAILORT="${MANUAL_DEB_DIR}/${PKG_HAILORT}"
-FILE_PCIE="${MANUAL_DEB_DIR}/${PKG_PCIE}"
+FILE_HAILORT="${UPGRADE_DIR}/${PKG_HAILORT}"
+FILE_PCIE="${UPGRADE_DIR}/${PKG_PCIE}"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -70,8 +69,8 @@ main() {
   require_command cut
   require_command uname
 
-  mkdir -p "$MANUAL_DEB_DIR"
-  log "Suche manuell bereitgestellte .deb-Dateien in: ${MANUAL_DEB_DIR}"
+  mkdir -p "$UPGRADE_DIR"
+  log "Suche .deb-Dateien in: ${UPGRADE_DIR}"
 
   local -a install_files=()
   if download_file "$FILE_HAILORT" "$PKG_HAILORT"; then
