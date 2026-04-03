@@ -237,7 +237,11 @@ prompt_secret_with_confirmation() {
     warn "Eingaben stimmen nicht überein. Bitte erneut eingeben."
   done
 
-  [[ "${had_xtrace}" == "true" ]] && set -x
+  if [[ "${had_xtrace}" == "true" ]]; then
+    set -x
+  fi
+
+  return 0
 }
 
 # ----------------------------
