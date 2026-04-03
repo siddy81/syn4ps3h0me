@@ -241,6 +241,29 @@ detect_real_user() {
   fi
 }
 
+get_installed_package_version() {
+  local package_name="$1"
+  dpkg-query -W -f='${Version}' "${package_name}" 2>/dev/null || true
+}
+
+run_hailo_installer_fallback() {
+  local -a installer_args=("${HAILO_TARGET_ARCH}")
+  local hailort_version tappas_version
+
+  hailort_version="$(get_installed_package_version "hailort")"
+  tappas_version="$(get_installed_package_version "hailo-tappas-core")"
+
+  if [[ -n "${hailort_version}" ]]; then
+    installer_args+=("--hailort-version" "${hailort_version}")
+  fi
+  if [[ -n "${tappas_version}" ]]; then
+    installer_args+=("--tappas-core-version" "${tappas_version}")
+  fi
+
+  log "Starte ./scripts/hailo_installer.sh ${installer_args[*]} ..."
+  ${SUDO} ./scripts/hailo_installer.sh "${installer_args[@]}"
+}
+
 # ----------------------------
 # Hailo setup_env helper
 # ----------------------------
@@ -507,8 +530,12 @@ setup_hailo_apps_and_whisper() {
   if ! ${SUDO} ./install.sh; then
     warn "hailo-apps install.sh meldete Fehler. Versuche automatische Reparatur für fehlende Hailo-Komponenten ..."
     if [[ -x "./scripts/hailo_installer.sh" ]]; then
-      log "Starte ./scripts/hailo_installer.sh ${HAILO_TARGET_ARCH} ..."
-      ${SUDO} ./scripts/hailo_installer.sh "${HAILO_TARGET_ARCH}"
+      if command -v hailortcli >/dev/null 2>&1; then
+        warn "hailortcli ist bereits installiert. Überspringe hailo_installer-Fallback."
+        warn "Wenn 'hailortcli fw-control identify' fehlschlägt, liegt meist ein Geräte-/Treiber-/Reboot-Thema vor."
+        fail "hailo-apps Post-Install fehlgeschlagen, obwohl HailoRT vorhanden ist. Bitte Device-Verbindung prüfen und nach Treiberinstallation neu starten."
+      fi
+      run_hailo_installer_fallback
       log "Starte hailo-apps ./install.sh erneut ..."
       ${SUDO} ./install.sh
     else
