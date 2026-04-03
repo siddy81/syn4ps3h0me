@@ -208,7 +208,11 @@ apply_manual_passwords() {
     set_env_value "${key}" "${value}" "${env_file}"
   done
 
-  (( had_xtrace )) && set -x
+  if (( had_xtrace )); then
+    set -x
+  fi
+
+  return 0
 }
 
 apply_generated_passwords() {
@@ -223,7 +227,11 @@ apply_generated_passwords() {
     set_env_value "${key}" "${generated}" "${env_file}"
   done
 
-  (( had_xtrace )) && set -x
+  if (( had_xtrace )); then
+    set -x
+  fi
+
+  return 0
 }
 
 configure_password_strategy() {
