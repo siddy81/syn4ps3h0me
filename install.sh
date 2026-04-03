@@ -35,6 +35,15 @@ MODULE_VOICE=false
 MODULE_LLM_CHAT=false
 
 declare -a COMPOSE_SERVICES=()
+declare -a REQUIRED_SECRET_KEYS=()
+
+PASSWORD_MODE_MANUAL="manual"
+PASSWORD_MODE_GENERATE="generate"
+PASSWORD_MODE_USE_ENV="use_env"
+PASSWORD_MODE=""
+
+ENV_FILE_BASENAME=".env"
+ENV_FILE=""
 
 # Script liegt in ~/workspace/Siddys-Shelly-Smart-Home/install.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,20 +74,149 @@ upsert_env_key() {
   local key="$1"
   local value="$2"
   local env_file="$3"
+  local tmp_file=""
 
-  [[ -f "${env_file}" ]] || return
+  [[ -f "${env_file}" ]] || touch "${env_file}"
 
-  if grep -qE "^${key}=" "${env_file}"; then
-    awk -v k="${key}" -v v="${value}" '
-      BEGIN { replaced=0 }
-      $0 ~ ("^" k "=") { print k "=" v; replaced=1; next }
-      { print }
-      END { if (!replaced) print k "=" v }
-    ' "${env_file}" > "${env_file}.tmp"
-    mv "${env_file}.tmp" "${env_file}"
-  else
-    echo "${key}=${value}" >> "${env_file}"
+  tmp_file="$(mktemp)"
+  awk -v k="${key}" -v v="${value}" '
+    BEGIN { updated=0 }
+    index($0, k "=") == 1 {
+      if (!updated) {
+        print k "=" v
+        updated=1
+      }
+      next
+    }
+    { print }
+    END {
+      if (!updated) {
+        print k "=" v
+      }
+    }
+  ' "${env_file}" > "${tmp_file}"
+  mv "${tmp_file}" "${env_file}"
+}
+
+append_unique() {
+  local value="$1"
+  local item=""
+
+  for item in "${REQUIRED_SECRET_KEYS[@]}"; do
+    [[ "${item}" == "${value}" ]] && return
+  done
+
+  REQUIRED_SECRET_KEYS+=("${value}")
+}
+
+get_secret_description() {
+  local key="$1"
+
+  case "${key}" in
+    MQTT_PASSWORD) echo "Mosquitto/Telegraf MQTT Passwort" ;;
+    INFLUXDB_PASSWORD) echo "InfluxDB Admin-Passwort" ;;
+    INFLUXDB_WRITE_TOKEN) echo "InfluxDB Write-Token (Telegraf/Grafana Datasource)" ;;
+    GRAFANA_ADMIN_PASSWORD) echo "Grafana Admin-Passwort" ;;
+    PIHOLE_API_PASSWORD) echo "Pi-hole API-Passwort" ;;
+    PIHOLE_ADMIN_PASSWORD) echo "Pi-hole Web-Admin-Passwort" ;;
+    OPEN_WEBUI_ADMIN_PASSWORD) echo "Open WebUI Admin-Passwort" ;;
+    *) echo "${key}" ;;
+  esac
+}
+
+collect_required_secrets_for_selected_modules() {
+  REQUIRED_SECRET_KEYS=()
+
+  if [[ "${MODULE_SMARTHOME}" == "true" ]]; then
+    append_unique "MQTT_PASSWORD"
+    append_unique "INFLUXDB_PASSWORD"
+    append_unique "INFLUXDB_WRITE_TOKEN"
+    append_unique "GRAFANA_ADMIN_PASSWORD"
   fi
+
+  if [[ "${MODULE_PIHOLE}" == "true" ]]; then
+    append_unique "PIHOLE_API_PASSWORD"
+    append_unique "PIHOLE_ADMIN_PASSWORD"
+  fi
+
+  if [[ "${MODULE_LLM_CHAT}" == "true" ]]; then
+    append_unique "OPEN_WEBUI_ADMIN_PASSWORD"
+  fi
+}
+
+ensure_env_file_present() {
+  ENV_FILE="${PROJECT_DIR}/${ENV_FILE_BASENAME}"
+  [[ -f "${ENV_FILE}" ]] || touch "${ENV_FILE}"
+}
+
+ensure_non_secret_env_defaults() {
+  local defaults=(
+    "MQTT_USER=telegraf"
+    "INFLUXDB_INIT_MODE=setup"
+    "INFLUXDB_USERNAME=admin"
+    "INFLUXDB_ORG=home"
+    "INFLUXDB_BUCKET=shelly"
+    "GF_ADMIN_USER=admin"
+    "OPEN_WEBUI_ADMIN_EMAIL=admin@local"
+    "OPEN_WEBUI_ADMIN_NAME=admin"
+  )
+  local entry key
+  for entry in "${defaults[@]}"; do
+    key="${entry%%=*}"
+    if ! grep -qE "^${key}=" "${ENV_FILE}"; then
+      upsert_env_key "${key}" "${entry#*=}" "${ENV_FILE}"
+      log "Ergänze .env Default: ${key}"
+    fi
+  done
+}
+
+env_key_has_value() {
+  local key="$1"
+  local env_file="$2"
+  local current_value=""
+
+  [[ -f "${env_file}" ]] || return 1
+  current_value="$(awk -F= -v k="${key}" 'index($0, k "=") == 1 { print substr($0, length(k)+2); exit }' "${env_file}")"
+  [[ -n "${current_value}" ]]
+}
+
+generate_secret_value() {
+  local length="$1"
+  local generated=""
+  generated="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${length}" || true)"
+  if [[ "${#generated}" -lt "${length}" ]]; then
+    generated="$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c "${length}")"
+  fi
+  echo "${generated}"
+}
+
+prompt_secret_with_confirmation() {
+  local key="$1"
+  local label="$2"
+  local first=""
+  local second=""
+  local had_xtrace=false
+
+  if [[ "$-" == *x* ]]; then
+    had_xtrace=true
+    set +x
+  fi
+
+  while true; do
+    read -r -s -p "${label}: " first
+    echo
+    [[ -n "${first}" ]] || { warn "${key} darf nicht leer sein."; continue; }
+
+    read -r -s -p "${label} bestätigen: " second
+    echo
+    if [[ "${first}" == "${second}" ]]; then
+      printf "%s" "${first}"
+      break
+    fi
+    warn "Eingaben stimmen nicht überein. Bitte erneut eingeben."
+  done
+
+  [[ "${had_xtrace}" == "true" ]] && set -x
 }
 
 # ----------------------------
@@ -191,6 +329,129 @@ select_modules() {
     mapfile -t COMPOSE_SERVICES < <(printf "%s\n" "${COMPOSE_SERVICES[@]}" | awk '!seen[$0]++')
     log "Ausgewählte Compose-Services: ${COMPOSE_SERVICES[*]}"
   fi
+}
+
+select_password_mode() {
+  local choice=""
+
+  if [[ ${#REQUIRED_SECRET_KEYS[@]} -eq 0 ]]; then
+    log "Keine passwortpflichtigen Module ausgewählt. Passwortstrategie wird übersprungen."
+    return
+  fi
+
+  echo
+  echo "============================================================"
+  echo "Passwortstrategie"
+  echo "============================================================"
+  echo "1) Passwörter selbst eingeben"
+  echo "2) Passwörter generieren (8-12 Zeichen, alphanumerisch)"
+  echo "3) Bestehende Passwörter aus .env verwenden"
+
+  while true; do
+    read -r -p "Bitte wählen [1-3]: " choice
+    case "${choice}" in
+      1) PASSWORD_MODE="${PASSWORD_MODE_MANUAL}"; return ;;
+      2) PASSWORD_MODE="${PASSWORD_MODE_GENERATE}"; return ;;
+      3) PASSWORD_MODE="${PASSWORD_MODE_USE_ENV}"; return ;;
+      *) warn "Ungültige Auswahl. Bitte 1, 2 oder 3 wählen." ;;
+    esac
+  done
+}
+
+apply_manual_secret_entry() {
+  local key desc secret_value
+  for key in "${REQUIRED_SECRET_KEYS[@]}"; do
+    desc="$(get_secret_description "${key}")"
+    secret_value="$(prompt_secret_with_confirmation "${key}" "${desc}")"
+    upsert_env_key "${key}" "${secret_value}" "${ENV_FILE}"
+  done
+}
+
+apply_generated_secrets() {
+  local key desc generated length
+  for key in "${REQUIRED_SECRET_KEYS[@]}"; do
+    length="$((RANDOM % 5 + 8))"
+    generated="$(generate_secret_value "${length}")"
+    desc="$(get_secret_description "${key}")"
+    [[ -n "${generated}" ]] || fail "Konnte Secret für ${key} nicht generieren."
+    upsert_env_key "${key}" "${generated}" "${ENV_FILE}"
+    log "Secret aktualisiert: ${desc}"
+  done
+}
+
+resolve_missing_env_secrets() {
+  local -a missing=("$@")
+  local choice=""
+  local key desc secret_value length generated
+
+  echo
+  warn "In .env fehlen erforderliche Werte für ausgewählte Module:"
+  for key in "${missing[@]}"; do
+    echo " - ${key}"
+  done
+  echo
+  echo "Wie sollen fehlende Werte behandelt werden?"
+  echo "1) Fehlende Werte manuell erfassen"
+  echo "2) Fehlende Werte generieren"
+  echo "3) Installation abbrechen"
+
+  while true; do
+    read -r -p "Bitte wählen [1-3]: " choice
+    case "${choice}" in
+      1)
+        for key in "${missing[@]}"; do
+          desc="$(get_secret_description "${key}")"
+          secret_value="$(prompt_secret_with_confirmation "${key}" "${desc}")"
+          upsert_env_key "${key}" "${secret_value}" "${ENV_FILE}"
+        done
+        return
+        ;;
+      2)
+        for key in "${missing[@]}"; do
+          length="$((RANDOM % 5 + 8))"
+          generated="$(generate_secret_value "${length}")"
+          [[ -n "${generated}" ]] || fail "Konnte Secret für ${key} nicht generieren."
+          upsert_env_key "${key}" "${generated}" "${ENV_FILE}"
+          log "Fehlendes Secret ergänzt: $(get_secret_description "${key}")"
+        done
+        return
+        ;;
+      3) fail "Erforderliche .env-Secrets fehlen. Abbruch auf Benutzerwunsch." ;;
+      *) warn "Ungültige Auswahl. Bitte 1, 2 oder 3 wählen." ;;
+    esac
+  done
+}
+
+use_existing_env_secrets() {
+  local -a missing=()
+  local key
+  for key in "${REQUIRED_SECRET_KEYS[@]}"; do
+    if ! env_key_has_value "${key}" "${ENV_FILE}"; then
+      missing+=("${key}")
+    fi
+  done
+
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    log "Alle benötigten Secrets sind in .env vorhanden und werden wiederverwendet."
+    return
+  fi
+
+  resolve_missing_env_secrets "${missing[@]}"
+}
+
+process_password_strategy() {
+  ensure_env_file_present
+  collect_required_secrets_for_selected_modules
+  ensure_non_secret_env_defaults
+  select_password_mode
+
+  case "${PASSWORD_MODE}" in
+    "${PASSWORD_MODE_MANUAL}") apply_manual_secret_entry ;;
+    "${PASSWORD_MODE_GENERATE}") apply_generated_secrets ;;
+    "${PASSWORD_MODE_USE_ENV}") use_existing_env_secrets ;;
+    "") ;;
+    *) fail "Unbekannter Passwortmodus: ${PASSWORD_MODE}" ;;
+  esac
 }
 
 # ----------------------------
@@ -414,7 +675,7 @@ ensure_default_llm_model() {
 ensure_voice_env_defaults() {
   cd "${PROJECT_DIR}"
 
-  [[ -f ".env" ]] || return
+  ensure_env_file_present
 
   local uid gid
   uid="$(id -u "${REAL_USER}" 2>/dev/null || id -u)"
@@ -448,15 +709,15 @@ ensure_voice_env_defaults() {
   local entry key
   for entry in "${defaults[@]}"; do
     key="${entry%%=*}"
-    if ! grep -qE "^${key}=" .env; then
-      echo "${entry}" >> .env
+    if ! env_key_has_value "${key}" "${ENV_FILE}"; then
+      upsert_env_key "${key}" "${entry#*=}" "${ENV_FILE}"
       log "Ergänze fehlende .env Vorgabe: ${key}"
     fi
   done
 
-  upsert_env_key "OPEN_WEBUI_DEFAULT_MODELS" "${ACTIVE_LLM_MODEL}" ".env"
-  upsert_env_key "OPEN_WEBUI_OLLAMA_BASE_URL" "http://127.0.0.1:8000" ".env"
-  upsert_env_key "OPEN_WEBUI_IMAGE" "ghcr.io/open-webui/open-webui:main" ".env"
+  upsert_env_key "OPEN_WEBUI_DEFAULT_MODELS" "${ACTIVE_LLM_MODEL}" "${ENV_FILE}"
+  upsert_env_key "OPEN_WEBUI_OLLAMA_BASE_URL" "http://127.0.0.1:8000" "${ENV_FILE}"
+  upsert_env_key "OPEN_WEBUI_IMAGE" "ghcr.io/open-webui/open-webui:main" "${ENV_FILE}"
   log "Setze OPEN_WEBUI_DEFAULT_MODELS auf ${ACTIVE_LLM_MODEL}"
 }
 
@@ -628,6 +889,7 @@ main() {
   require_root_or_sudo
   detect_real_user
   select_modules
+  process_password_strategy
   install_base_packages
   install_docker_if_needed
   ensure_docker_group_membership
