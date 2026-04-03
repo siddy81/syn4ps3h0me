@@ -528,13 +528,13 @@ compose_up() {
 
   if ${SUDO} docker compose version >/dev/null 2>&1; then
     log "Starte ausgewählte Compose-Services mit docker compose up -d ..."
-    ${SUDO} docker compose up -d "${COMPOSE_SERVICES[@]}"
+    ${SUDO} docker compose up -d --force-recreate "${COMPOSE_SERVICES[@]}"
     return
   fi
 
   if command -v docker-compose >/dev/null 2>&1; then
     log "Starte ausgewählte Compose-Services mit docker-compose up -d ..."
-    ${SUDO} docker-compose up -d "${COMPOSE_SERVICES[@]}"
+    ${SUDO} docker-compose up -d --force-recreate "${COMPOSE_SERVICES[@]}"
     return
   fi
 
