@@ -410,8 +410,13 @@ apply_manual_secret_entry() {
   local key desc secret_value
   for key in "${REQUIRED_SECRET_KEYS[@]}"; do
     desc="$(get_secret_description "${key}")"
+    echo
+    echo "------------------------------------------------------------"
+    echo "Manuelle Eingabe: ${desc}"
+    echo "------------------------------------------------------------"
     secret_value="$(prompt_secret_with_confirmation "${key}" "${desc}")"
     upsert_env_key "${key}" "${secret_value}" "${ENV_FILE}"
+    echo
   done
 }
 
