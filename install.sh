@@ -36,6 +36,7 @@ MODULE_LLM_CHAT=false
 
 declare -a COMPOSE_SERVICES=()
 declare -a REQUIRED_SECRET_KEYS=()
+PASSWORD_STRATEGY=""
 declare -a SECRET_SPECS=(
   "smarthome|MQTT_PASSWORD|MQTT Passwort"
   "smarthome|INFLUXDB_PASSWORD|InfluxDB Admin-Passwort"
@@ -187,8 +188,8 @@ select_password_strategy() {
     read -r -p "Auswahl [1/2]: " choice
 
     case "${choice}" in
-      1) echo "manual"; return ;;
-      2) echo "generate"; return ;;
+      1) PASSWORD_STRATEGY="manual"; return ;;
+      2) PASSWORD_STRATEGY="generate"; return ;;
       *) warn "Ungültige Eingabe. Bitte 1 oder 2 auswählen." ;;
     esac
   done
@@ -227,7 +228,6 @@ apply_generated_passwords() {
 
 configure_password_strategy() {
   local env_file="${PROJECT_DIR}/.env"
-  local strategy=""
 
   collect_required_secrets
 
@@ -236,8 +236,8 @@ configure_password_strategy() {
     return
   fi
 
-  strategy="$(select_password_strategy)"
-  case "${strategy}" in
+  select_password_strategy
+  case "${PASSWORD_STRATEGY}" in
     manual)
       log "Erfasse Passwörter für ausgewählte Module ..."
       apply_manual_passwords "${env_file}"
@@ -247,7 +247,7 @@ configure_password_strategy() {
       apply_generated_passwords "${env_file}"
       ;;
     *)
-      fail "Unbekannte Passwortstrategie: ${strategy}"
+      fail "Unbekannte Passwortstrategie: ${PASSWORD_STRATEGY}"
       ;;
   esac
 
