@@ -519,9 +519,30 @@ install_hailo_ollama_if_needed() {
 }
 
 install_hailo_h10_stack() {
+  local target_hailort_version="5.2.0"
+  local local_hailort_deb="/home/siddy/hailo-upg/hailort_${target_hailort_version}_arm64.deb"
+  local local_pcie_deb="/home/siddy/hailo-upg/hailort-pcie-driver_${target_hailort_version}_all.deb"
+
   log "Installiere Hailo-Basispakete (dkms, hailo-h10-all) ..."
   ${SUDO} apt-get update
   ${SUDO} apt-get install -y dkms
+
+  if command -v hailortcli >/dev/null 2>&1; then
+    local current_fw_version=""
+    current_fw_version="$(hailortcli fw-control identify 2>/dev/null | awk '/Firmware Version:/ {print $3; exit}')"
+    if [[ -n "${current_fw_version}" ]] && [[ "$(printf '%s\n%s\n' "${target_hailort_version}" "${current_fw_version}" | sort -V | head -n1)" == "${target_hailort_version}" ]]; then
+      log "HailoRT/Firmware ist bereits >= ${target_hailort_version} (${current_fw_version}). Überspringe hailo-h10-all, um Downgrade zu vermeiden."
+      return
+    fi
+  fi
+
+  if [[ -f "${local_hailort_deb}" && -f "${local_pcie_deb}" && -x "${PROJECT_DIR}/upgrade-hailort.sh" ]]; then
+    log "Nutze lokale HailoRT ${target_hailort_version} Debs via upgrade-hailort.sh (${local_hailort_deb}, ${local_pcie_deb}) ..."
+    ${SUDO} DO_REBOOT=0 "${PROJECT_DIR}/upgrade-hailort.sh"
+    return
+  fi
+
+  warn "Keine lokalen HailoRT-${target_hailort_version}-Debs gefunden. Nutze apt-Paket hailo-h10-all (kann ältere Version installieren)."
   ${SUDO} apt-get install -y hailo-h10-all
 
   if ! command -v hailortcli >/dev/null 2>&1; then
