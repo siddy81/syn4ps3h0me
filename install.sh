@@ -35,6 +35,17 @@ MODULE_VOICE=false
 MODULE_LLM_CHAT=false
 
 declare -a COMPOSE_SERVICES=()
+declare -a REQUIRED_SECRET_KEYS=()
+declare -a SECRET_SPECS=(
+  "smarthome|MQTT_PASSWORD|MQTT Passwort"
+  "smarthome|INFLUXDB_PASSWORD|InfluxDB Admin-Passwort"
+  "smarthome|INFLUXDB_WRITE_TOKEN|InfluxDB Write-Token"
+  "smarthome|GRAFANA_ADMIN_PASSWORD|Grafana Admin-Passwort"
+  "pihole|PIHOLE_ADMIN_PASSWORD|Pi-hole Admin-Passwort"
+  "pihole|PIHOLE_API_PASSWORD|Pi-hole API-Passwort"
+  "llm_chat|OPEN_WEBUI_ADMIN_PASSWORD|Open WebUI Admin-Passwort"
+)
+declare -A SECRET_PROMPT_BY_KEY=()
 
 # Script liegt in ~/workspace/Siddys-Shelly-Smart-Home/install.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,24 +72,186 @@ ask_module() {
   is_yes "${answer}"
 }
 
-upsert_env_key() {
+set_env_value() {
   local key="$1"
   local value="$2"
   local env_file="$3"
+  local tmp_file
 
-  [[ -f "${env_file}" ]] || return
+  [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail "Ungültiger .env Key: ${key}"
+  [[ -f "${env_file}" ]] || touch "${env_file}"
 
-  if grep -qE "^${key}=" "${env_file}"; then
-    awk -v k="${key}" -v v="${value}" '
-      BEGIN { replaced=0 }
-      $0 ~ ("^" k "=") { print k "=" v; replaced=1; next }
-      { print }
-      END { if (!replaced) print k "=" v }
-    ' "${env_file}" > "${env_file}.tmp"
-    mv "${env_file}.tmp" "${env_file}"
-  else
-    echo "${key}=${value}" >> "${env_file}"
+  tmp_file="$(mktemp)"
+  awk -v k="${key}" -v v="${value}" '
+    BEGIN { replaced=0 }
+    $0 ~ ("^" k "=") {
+      if (!replaced) {
+        print k "=" v
+        replaced=1
+      }
+      next
+    }
+    { print }
+    END {
+      if (!replaced) {
+        print k "=" v
+      }
+    }
+  ' "${env_file}" > "${tmp_file}"
+  mv "${tmp_file}" "${env_file}"
+}
+
+module_is_selected() {
+  local module="$1"
+  case "${module}" in
+    smarthome) [[ "${MODULE_SMARTHOME}" == "true" ]] ;;
+    pihole) [[ "${MODULE_PIHOLE}" == "true" ]] ;;
+    llm_chat) [[ "${MODULE_LLM_CHAT}" == "true" ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+collect_required_secrets() {
+  local spec module key prompt
+  local -A seen=()
+
+  REQUIRED_SECRET_KEYS=()
+  SECRET_PROMPT_BY_KEY=()
+
+  for spec in "${SECRET_SPECS[@]}"; do
+    IFS='|' read -r module key prompt <<< "${spec}"
+    if module_is_selected "${module}"; then
+      if [[ -z "${seen[${key}]:-}" ]]; then
+        REQUIRED_SECRET_KEYS+=("${key}")
+        SECRET_PROMPT_BY_KEY["${key}"]="${prompt}"
+        seen["${key}"]=1
+      fi
+    fi
+  done
+}
+
+generate_password() {
+  local min_len=8
+  local max_len=12
+  local length
+  local candidate=""
+
+  while true; do
+    length="$((RANDOM % (max_len - min_len + 1) + min_len))"
+    candidate="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${length}" || true)"
+
+    if [[ "${#candidate}" -eq "${length}" ]] &&
+       [[ "${candidate}" =~ [A-Z] ]] &&
+       [[ "${candidate}" =~ [a-z] ]] &&
+       [[ "${candidate}" =~ [0-9] ]]; then
+      printf '%s' "${candidate}"
+      return
+    fi
+  done
+}
+
+prompt_password_value() {
+  local prompt_label="$1"
+  local password=""
+  local confirmation=""
+
+  while true; do
+    read -r -s -p "${prompt_label}: " password
+    echo
+    read -r -s -p "${prompt_label} bestätigen: " confirmation
+    echo
+
+    if [[ "${password}" != "${confirmation}" ]]; then
+      warn "Passwörter stimmen nicht überein. Bitte erneut eingeben."
+      continue
+    fi
+    if [[ "${#password}" -lt 8 ]]; then
+      warn "Passwort muss mindestens 8 Zeichen lang sein."
+      continue
+    fi
+    printf '%s' "${password}"
+    return
+  done
+}
+
+select_password_strategy() {
+  local choice=""
+
+  while true; do
+    echo
+    echo "============================================================"
+    echo "Passwortstrategie"
+    echo "============================================================"
+    echo "[1] Passwörter selbst eingeben"
+    echo "[2] Passwörter generieren"
+    read -r -p "Auswahl [1/2]: " choice
+
+    case "${choice}" in
+      1) echo "manual"; return ;;
+      2) echo "generate"; return ;;
+      *) warn "Ungültige Eingabe. Bitte 1 oder 2 auswählen." ;;
+    esac
+  done
+}
+
+apply_manual_passwords() {
+  local env_file="$1"
+  local had_xtrace=0
+  local key prompt value
+
+  [[ "${-}" == *x* ]] && had_xtrace=1 && set +x
+
+  for key in "${REQUIRED_SECRET_KEYS[@]}"; do
+    prompt="${SECRET_PROMPT_BY_KEY[${key}]}"
+    value="$(prompt_password_value "${prompt}")"
+    set_env_value "${key}" "${value}" "${env_file}"
+  done
+
+  (( had_xtrace )) && set -x
+}
+
+apply_generated_passwords() {
+  local env_file="$1"
+  local had_xtrace=0
+  local key generated
+
+  [[ "${-}" == *x* ]] && had_xtrace=1 && set +x
+
+  for key in "${REQUIRED_SECRET_KEYS[@]}"; do
+    generated="$(generate_password)"
+    set_env_value "${key}" "${generated}" "${env_file}"
+  done
+
+  (( had_xtrace )) && set -x
+}
+
+configure_password_strategy() {
+  local env_file="${PROJECT_DIR}/.env"
+  local strategy=""
+
+  collect_required_secrets
+
+  if [[ "${#REQUIRED_SECRET_KEYS[@]}" -eq 0 ]]; then
+    log "Für die ausgewählten Module sind keine Passwörter/Secrets erforderlich."
+    return
   fi
+
+  strategy="$(select_password_strategy)"
+  case "${strategy}" in
+    manual)
+      log "Erfasse Passwörter für ausgewählte Module ..."
+      apply_manual_passwords "${env_file}"
+      ;;
+    generate)
+      log "Generiere Passwörter für ausgewählte Module ..."
+      apply_generated_passwords "${env_file}"
+      ;;
+    *)
+      fail "Unbekannte Passwortstrategie: ${strategy}"
+      ;;
+  esac
+
+  log "Passwort-/Secret-Konfiguration erfolgreich in .env aktualisiert."
 }
 
 # ----------------------------
@@ -454,9 +627,9 @@ ensure_voice_env_defaults() {
     fi
   done
 
-  upsert_env_key "OPEN_WEBUI_DEFAULT_MODELS" "${ACTIVE_LLM_MODEL}" ".env"
-  upsert_env_key "OPEN_WEBUI_OLLAMA_BASE_URL" "http://127.0.0.1:8000" ".env"
-  upsert_env_key "OPEN_WEBUI_IMAGE" "ghcr.io/open-webui/open-webui:main" ".env"
+  set_env_value "OPEN_WEBUI_DEFAULT_MODELS" "${ACTIVE_LLM_MODEL}" ".env"
+  set_env_value "OPEN_WEBUI_OLLAMA_BASE_URL" "http://127.0.0.1:8000" ".env"
+  set_env_value "OPEN_WEBUI_IMAGE" "ghcr.io/open-webui/open-webui:main" ".env"
   log "Setze OPEN_WEBUI_DEFAULT_MODELS auf ${ACTIVE_LLM_MODEL}"
 }
 
@@ -628,6 +801,7 @@ main() {
   require_root_or_sudo
   detect_real_user
   select_modules
+  configure_password_strategy
   install_base_packages
   install_docker_if_needed
   ensure_docker_group_membership
