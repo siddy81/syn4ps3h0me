@@ -185,12 +185,14 @@ select_password_strategy() {
     echo "============================================================"
     echo "[1] Passwörter selbst eingeben"
     echo "[2] Passwörter generieren"
-    read -r -p "Auswahl [1/2]: " choice
+    echo "[3] Bestehende Passwörter aus .env verwenden"
+    read -r -p "Auswahl [1/2/3]: " choice
 
     case "${choice}" in
       1) PASSWORD_STRATEGY="manual"; return ;;
       2) PASSWORD_STRATEGY="generate"; return ;;
-      *) warn "Ungültige Eingabe. Bitte 1 oder 2 auswählen." ;;
+      3) PASSWORD_STRATEGY="existing"; return ;;
+      *) warn "Ungültige Eingabe. Bitte 1, 2 oder 3 auswählen." ;;
     esac
   done
 }
@@ -234,6 +236,31 @@ apply_generated_passwords() {
   return 0
 }
 
+use_existing_passwords() {
+  local env_file="$1"
+  local key
+  local value
+  local -a missing_keys=()
+
+  if [[ ! -f "${env_file}" ]]; then
+    fail "Die Datei ${env_file} existiert nicht. Option [3] benötigt vorhandene .env-Werte."
+  fi
+
+  for key in "${REQUIRED_SECRET_KEYS[@]}"; do
+    value="$(awk -F= -v k="${key}" '$1 == k { print substr($0, index($0, "=") + 1); exit }' "${env_file}")"
+    if [[ -z "${value}" ]]; then
+      missing_keys+=("${key}")
+    fi
+  done
+
+  if [[ "${#missing_keys[@]}" -gt 0 ]]; then
+    fail "Option [3] wurde gewählt, aber folgende .env-Keys fehlen/leer sind: ${missing_keys[*]}"
+  fi
+
+  log "Verwende bestehende Passwörter/Secrets aus .env für ausgewählte Module."
+  return 0
+}
+
 configure_password_strategy() {
   local env_file="${PROJECT_DIR}/.env"
 
@@ -253,6 +280,9 @@ configure_password_strategy() {
     generate)
       log "Generiere Passwörter für ausgewählte Module ..."
       apply_generated_passwords "${env_file}"
+      ;;
+    existing)
+      use_existing_passwords "${env_file}"
       ;;
     *)
       fail "Unbekannte Passwortstrategie: ${PASSWORD_STRATEGY}"
