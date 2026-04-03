@@ -21,8 +21,8 @@ SERVICE_WORKDIR="/home/siddy"
 SERVICE_EXEC="/usr/bin/hailo-ollama"
 SERVICE_FILE="/etc/systemd/system/hailo-ollama.service"
 
-DEB_URL="https://dev-public.hailo.ai/2025_12/Hailo10/hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
-DEB_FILE="hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
+DEB_URL="https://dev-public.hailo.ai/2026_01/Hailo10/hailo_gen_ai_model_zoo_5.2.0_arm64.deb"
+DEB_FILE="hailo_gen_ai_model_zoo_5.2.0_arm64.deb"
 DEFAULT_LLM_MODEL="llama3.2:3b"
 ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
 
