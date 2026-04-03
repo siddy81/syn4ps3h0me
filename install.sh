@@ -28,8 +28,6 @@ ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
 HAILO_TARGET_ARCH="hailo10h"
-HAILORT_TARGET_VERSION="5.2.0"
-TAPPAS_CORE_TARGET_VERSION="5.2.0"
 
 MODULE_SMARTHOME=false
 MODULE_PIHOLE=false
@@ -473,14 +471,18 @@ setup_hailo_apps_and_whisper() {
 
   log "Führe sudo ./install.sh aus ..."
   if ! ${SUDO} ./install.sh; then
-    warn "hailo-apps install.sh meldete Fehler. Versuche automatische Reparatur für fehlende Hailo-Komponenten ..."
-    if [[ -x "./scripts/hailo_installer.sh" ]]; then
-      log "Starte ./scripts/hailo_installer.sh ${HAILO_TARGET_ARCH} -H -r ${HAILORT_TARGET_VERSION} -t ${TAPPAS_CORE_TARGET_VERSION} ..."
-      ${SUDO} ./scripts/hailo_installer.sh "${HAILO_TARGET_ARCH}" -H -r "${HAILORT_TARGET_VERSION}" -t "${TAPPAS_CORE_TARGET_VERSION}"
-      log "Starte hailo-apps ./install.sh erneut ..."
-      ${SUDO} ./install.sh
+    warn "hailo-apps install.sh meldete Fehler. Versuche lokale HailoRT-Reparatur ohne Remote-Downgrade ..."
+
+    if [[ -x "${PROJECT_DIR}/upgrade-hailort.sh" ]]; then
+      log "Starte ${PROJECT_DIR}/upgrade-hailort.sh (DO_REBOOT=0) ..."
+      ${SUDO} DO_REBOOT=0 "${PROJECT_DIR}/upgrade-hailort.sh" || warn "upgrade-hailort.sh meldete Fehler; versuche trotzdem erneuten hailo-apps Install-Lauf."
     else
-      fail "hailo-apps Installation fehlgeschlagen und ./scripts/hailo_installer.sh wurde nicht gefunden."
+      warn "upgrade-hailort.sh nicht gefunden. Überspringe lokalen HailoRT-Reparaturschritt."
+    fi
+
+    log "Starte hailo-apps ./install.sh erneut ..."
+    if ! ${SUDO} ./install.sh; then
+      fail "hailo-apps Installation ist nach lokalem Reparaturversuch weiterhin fehlgeschlagen."
     fi
   fi
 
@@ -497,7 +499,7 @@ setup_hailo_apps_and_whisper() {
   fi
 
   log "Lade Whisper-Ressourcen für Hailo-10H ..."
-  hailo-download-resources --group whisper_chat --arch hailo10h
+  hailo-download-resources --group whisper_chat --arch "${HAILO_TARGET_ARCH}"
 
   log "Gehe zurück ins Projektverzeichnis ..."
   popd >/dev/null
