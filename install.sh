@@ -27,6 +27,7 @@ DEFAULT_LLM_MODEL="llama3.2:3b"
 ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
+HAILO_TARGET_ARCH="${HAILO_TARGET_ARCH:-hailo10h}"
 
 MODULE_SMARTHOME=false
 MODULE_PIHOLE=false
@@ -505,8 +506,8 @@ setup_hailo_apps_and_whisper() {
   if ! ${SUDO} ./install.sh; then
     warn "hailo-apps install.sh meldete Fehler. Versuche automatische Reparatur für fehlende Hailo-Komponenten ..."
     if [[ -x "./scripts/hailo_installer.sh" ]]; then
-      log "Starte ./scripts/hailo_installer.sh ..."
-      ${SUDO} ./scripts/hailo_installer.sh
+      log "Starte ./scripts/hailo_installer.sh ${HAILO_TARGET_ARCH} ..."
+      ${SUDO} ./scripts/hailo_installer.sh "${HAILO_TARGET_ARCH}"
       log "Starte hailo-apps ./install.sh erneut ..."
       ${SUDO} ./install.sh
     else
@@ -577,6 +578,15 @@ install_hailo_h10_stack() {
     warn "hailortcli wurde nicht gefunden. Versuche HailoRT nachzuinstallieren ..."
     ${SUDO} apt-get install -y hailort || true
   fi
+}
+
+ensure_hailo_runtime_for_selected_modules() {
+  if [[ "${MODULE_VOICE}" != "true" && "${MODULE_LLM_CHAT}" != "true" ]]; then
+    return
+  fi
+
+  repair_system_packages
+  install_hailo_h10_stack
 }
 
 # ----------------------------
@@ -893,14 +903,13 @@ main() {
   install_base_packages
   install_docker_if_needed
   ensure_docker_group_membership
+  ensure_hailo_runtime_for_selected_modules
 
   if [[ "${MODULE_VOICE}" == "true" ]]; then
     setup_hailo_apps_and_whisper
   fi
 
   if [[ "${MODULE_LLM_CHAT}" == "true" ]]; then
-    repair_system_packages
-    install_hailo_h10_stack
     download_deb_if_needed
     install_hailo_ollama_if_needed
     write_hailo_service
