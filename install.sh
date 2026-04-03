@@ -51,6 +51,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${SCRIPT_DIR}"
 WORKSPACE_DIR="$(dirname "${PROJECT_DIR}")"
 HAILO_APPS_DIR="${WORKSPACE_DIR}/hailo-apps"
+HAILO_COMPAT_REQUIREMENTS="${PROJECT_DIR}/requirements-hailo-compat.txt"
 
 # ----------------------------
 # Logging
@@ -522,6 +523,11 @@ setup_hailo_apps_and_whisper() {
 
   log "Installiere GenAI-Abhängigkeiten ..."
   python3 -m pip install -e '.[gen-ai]'
+
+  if [[ -f "${HAILO_COMPAT_REQUIREMENTS}" ]]; then
+    log "Installiere Hailo-Kompatibilitätsabhängigkeiten aus ${HAILO_COMPAT_REQUIREMENTS} ..."
+    python3 -m pip install -r "${HAILO_COMPAT_REQUIREMENTS}"
+  fi
 
   if ! command -v hailo-download-resources >/dev/null 2>&1; then
     fail "hailo-download-resources ist nach source setup_env.sh nicht verfügbar."
