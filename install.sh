@@ -60,6 +60,25 @@ log()  { echo "[INFO]  $*"; }
 warn() { echo "[WARN]  $*" >&2; }
 fail() { echo "[ERROR] $*" >&2; exit 1; }
 
+wait_with_progress() {
+  local pid="$1"
+  local message="$2"
+  local interval="${3:-2}"
+  local rc=0
+
+  printf "%s" "${message}"
+  while kill -0 "${pid}" 2>/dev/null; do
+    printf "."
+    sleep "${interval}"
+  done
+
+  if ! wait "${pid}"; then
+    rc=$?
+  fi
+  echo
+  return "${rc}"
+}
+
 is_yes() {
   local answer="${1:-}"
   [[ "${answer}" =~ ^([JjYy]|[Jj][Aa]|[Yy][Ee][Ss])$ ]]
@@ -694,13 +713,17 @@ ensure_default_llm_model() {
   fi
 
   log "Lade Standardmodell ${DEFAULT_LLM_MODEL} über die lokale Hailo-Ollama API ..."
-  if ! curl --silent \
-      "http://localhost:8000/api/pull" \
-      -H "Content-Type: application/json" \
-      -d "{ \"model\": \"${DEFAULT_LLM_MODEL}\", \"stream\" : true }" >/dev/null; then
+  log "Hinweis: Der Model-Download kann je nach Netzwerk und Modellgröße mehrere Minuten dauern."
+  curl --silent --show-error \
+    "http://localhost:8000/api/pull" \
+    -H "Content-Type: application/json" \
+    -d "{ \"model\": \"${DEFAULT_LLM_MODEL}\", \"stream\" : true }" >/dev/null &
+  local pull_pid=$!
+  if ! wait_with_progress "${pull_pid}" "[INFO]  Download läuft, bitte warten" 2; then
     warn "Download von ${DEFAULT_LLM_MODEL} fehlgeschlagen. Installation läuft weiter; bitte Modell ggf. manuell laden."
     return
   fi
+  log "Model-Download abgeschlossen."
 
   if curl --silent --fail \
       "http://localhost:8000/api/chat" \
