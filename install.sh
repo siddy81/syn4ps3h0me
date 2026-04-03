@@ -28,6 +28,8 @@ ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
 HAILO_TARGET_ARCH="hailo10h"
+HAILORT_TARGET_VERSION="5.2.0"
+TAPPAS_CORE_TARGET_VERSION="5.2.0"
 
 MODULE_SMARTHOME=false
 MODULE_PIHOLE=false
@@ -473,8 +475,8 @@ setup_hailo_apps_and_whisper() {
   if ! ${SUDO} ./install.sh; then
     warn "hailo-apps install.sh meldete Fehler. Versuche automatische Reparatur für fehlende Hailo-Komponenten ..."
     if [[ -x "./scripts/hailo_installer.sh" ]]; then
-      log "Starte ./scripts/hailo_installer.sh ${HAILO_TARGET_ARCH} ..."
-      ${SUDO} ./scripts/hailo_installer.sh "${HAILO_TARGET_ARCH}"
+      log "Starte ./scripts/hailo_installer.sh ${HAILO_TARGET_ARCH} -H -r ${HAILORT_TARGET_VERSION} -t ${TAPPAS_CORE_TARGET_VERSION} ..."
+      ${SUDO} ./scripts/hailo_installer.sh "${HAILO_TARGET_ARCH}" -H -r "${HAILORT_TARGET_VERSION}" -t "${TAPPAS_CORE_TARGET_VERSION}"
       log "Starte hailo-apps ./install.sh erneut ..."
       ${SUDO} ./install.sh
     else
