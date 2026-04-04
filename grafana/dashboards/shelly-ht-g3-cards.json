@@ -727,11 +727,11 @@
       "pluginVersion": "12.4.1",
       "targets": [
         {
-          "query": "from(bucket: \"shelly\")\n  |> range(start: 2018-01-01T00:00:00Z, stop: now())\n  |> filter(fn: (r) => r._measurement == \"shelly_ht\" and r._field == \"temperature_c\")\n  |> group()\n  |> aggregateWindow(every: 1y, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({ r with _field: \"Jahresmittel\" }))",
+          "query": "import \"strings\"\nfrom(bucket: \"shelly\")\n  |> range(start: 2018-01-01T00:00:00Z, stop: now())\n  |> filter(fn: (r) => r._measurement == \"shelly_ht\" and r._field == \"temperature_c\")\n  |> map(fn: (r) => ({ r with device: strings.trimPrefix(v: strings.split(v: r.topic, t: \"/\")[0], prefix: \"shelly_ht_\") }))\n  |> group(columns: [\"device\"])\n  |> aggregateWindow(every: 1y, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({ r with _field: r.device + \" Jahresmittel\" }))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
           "refId": "A"
         },
         {
-          "query": "from(bucket: \"shelly\")\n  |> range(start: 2018-01-01T00:00:00Z, stop: now())\n  |> filter(fn: (r) => r._measurement == \"shelly_ht\" and r._field == \"temperature_c\")\n  |> group()\n  |> aggregateWindow(every: 1y, fn: mean, createEmpty: false)\n  |> movingAverage(n: 3)\n  |> map(fn: (r) => ({ r with _field: \"3J-Trend\" }))",
+          "query": "import \"strings\"\nfrom(bucket: \"shelly\")\n  |> range(start: 2018-01-01T00:00:00Z, stop: now())\n  |> filter(fn: (r) => r._measurement == \"shelly_ht\" and r._field == \"temperature_c\")\n  |> map(fn: (r) => ({ r with device: strings.trimPrefix(v: strings.split(v: r.topic, t: \"/\")[0], prefix: \"shelly_ht_\") }))\n  |> group(columns: [\"device\"])\n  |> aggregateWindow(every: 1y, fn: mean, createEmpty: false)\n  |> movingAverage(n: 3)\n  |> map(fn: (r) => ({ r with _field: r.device + \" 3J-Trend\" }))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
           "refId": "B"
         }
       ],
