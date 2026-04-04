@@ -695,7 +695,8 @@
               }
             ]
           },
-          "unit": "celsius"
+          "unit": "celsius",
+          "displayName": "${__field.labels.series}"
         },
         "overrides": []
       },
@@ -727,11 +728,11 @@
       "pluginVersion": "12.4.1",
       "targets": [
         {
-          "query": "from(bucket: \"shelly\")\n  |> range(start: 2018-01-01T00:00:00Z, stop: now())\n  |> filter(fn: (r) => r._measurement == \"shelly_ht\" and r._field == \"temperature_c\")\n  |> group()\n  |> aggregateWindow(every: 1y, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({ r with _field: \"Jahresmittel\" }))",
+          "query": "import \"strings\"\nfrom(bucket: \"shelly\")\n  |> range(start: 2018-01-01T00:00:00Z, stop: now())\n  |> filter(fn: (r) => r._measurement == \"shelly_ht\" and r._field == \"temperature_c\")\n  |> map(fn: (r) => ({\n    r with\n    shelly_name: if exists r.device then string(v: r.device) else if exists r.topic then strings.trimPrefix(v: strings.split(v: r.topic, t: \"/\")[0], prefix: \"shelly_ht_\") else \"unbekannt\"\n  }))\n  |> group(columns: [\"shelly_name\"])\n  |> aggregateWindow(every: 1y, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({ r with series: r.shelly_name + \" Jahresmittel\" }))\n  |> group(columns: [\"series\"])\n  |> keep(columns: [\"_time\", \"_value\", \"series\"])",
           "refId": "A"
         },
         {
-          "query": "from(bucket: \"shelly\")\n  |> range(start: 2018-01-01T00:00:00Z, stop: now())\n  |> filter(fn: (r) => r._measurement == \"shelly_ht\" and r._field == \"temperature_c\")\n  |> group()\n  |> aggregateWindow(every: 1y, fn: mean, createEmpty: false)\n  |> movingAverage(n: 3)\n  |> map(fn: (r) => ({ r with _field: \"3J-Trend\" }))",
+          "query": "import \"strings\"\nfrom(bucket: \"shelly\")\n  |> range(start: 2018-01-01T00:00:00Z, stop: now())\n  |> filter(fn: (r) => r._measurement == \"shelly_ht\" and r._field == \"temperature_c\")\n  |> map(fn: (r) => ({\n    r with\n    shelly_name: if exists r.device then string(v: r.device) else if exists r.topic then strings.trimPrefix(v: strings.split(v: r.topic, t: \"/\")[0], prefix: \"shelly_ht_\") else \"unbekannt\"\n  }))\n  |> group(columns: [\"shelly_name\"])\n  |> aggregateWindow(every: 1y, fn: mean, createEmpty: false)\n  |> movingAverage(n: 3)\n  |> map(fn: (r) => ({ r with series: r.shelly_name + \" 3J-Trend\" }))\n  |> group(columns: [\"series\"])\n  |> keep(columns: [\"_time\", \"_value\", \"series\"])",
           "refId": "B"
         }
       ],
