@@ -25,6 +25,20 @@ Zusätzlich werden aktuell erste Komponenten für zukünftige KI-/Sprachfunktion
 
 Damit entsteht eine lokale, selbst gehostete Basis für Monitoring, MQTT-Kommunikation, DNS, HTTPS-Zugriffe und perspektivisch auch für KI-gestützte Erweiterungen.
 
+## Open WebUI: RAG mit lokalem Wissensordner
+
+Für die KI-Antworten in **Open WebUI** gibt es jetzt einen lokalen Wissensordner auf Dateiebene:
+
+- Host-Ordner: `open-webui/knowledge/`
+- Container-Pfad: `/app/backend/data/knowledge-import` (read-only gemountet)
+
+So nutzt du ihn:
+
+1. Lege deine Wissensdateien in `open-webui/knowledge/` ab (z. B. `.md`, `.txt`, `.pdf`, `.docx`).
+2. Starte/aktualisiere den Stack mit `docker compose up -d`.
+3. In Open WebUI: **Workspace → Knowledge** öffnen und die Dateien aus diesem Ordner importieren/hochladen.
+4. Beim Chatten dann das entsprechende Knowledge-Objekt auswählen, damit die Antworten auf dieser Wissensbasis laufen (RAG).
+
 **Pi-hole** wird zusätzlich als lokaler DNS-Server und Ad-Blocker vorkonfiguriert. Damit die Namensauflösung im Netzwerk zuverlässig funktioniert, muss **Pi-hole im Router** – z. B. in der **FRITZ!Box** – **korrekt als DNS-Server eingetragen und eingebunden** werden.
 
 **Caddy** wird ebenfalls installiert und vorkonfiguriert, um interne Dienste komfortabel per **HTTPS** bereitzustellen. Dieser Bereich wird aktuell noch weiter ausgebaut.
