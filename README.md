@@ -25,19 +25,31 @@ Zusätzlich werden aktuell erste Komponenten für zukünftige KI-/Sprachfunktion
 
 Damit entsteht eine lokale, selbst gehostete Basis für Monitoring, MQTT-Kommunikation, DNS, HTTPS-Zugriffe und perspektivisch auch für KI-gestützte Erweiterungen.
 
-## Open WebUI: RAG mit lokalem Wissensordner
+## Open WebUI: RAG mit externer ChromaDB + automatischem Wissens-Ingest
 
-Für die KI-Antworten in **Open WebUI** gibt es jetzt einen lokalen Wissensordner auf Dateiebene:
+Die LLM-Komponente nutzt jetzt eine **dedizierte ChromaDB Open-Source-Instanz** im gleichen Compose-Stack.
+Open WebUI spricht die Vector-DB über die eigene RAG-Schicht an; das Chat-Inferenz-Backend bleibt **Hailo/Ollama**.
 
-- Host-Ordner: `open-webui/knowledge/`
-- Container-Pfad: `/app/backend/data/knowledge-import` (read-only gemountet)
+### Architektur
+- Chat-Modelle: über `OLLAMA_BASE_URL` (z. B. `hailo-ollama`/Ollama-Backend)
+- Vector Store für RAG: `chromadb` (persistentes Docker-Volume)
+- Open WebUI: zentrale RAG-Orchestrierung (Embeddings, Retrieval, Answering)
+- Optionaler Datei-Ingest: `open-webui-knowledge-ingest` für `open-webui/knowledge/`
 
-So nutzt du ihn:
+### Wichtige `.env`-Werte
+- `VECTOR_DB=chroma`
+- `CHROMA_HTTP_HOST=chromadb`
+- `CHROMA_HTTP_PORT=8000`
+- `RAG_EMBEDDING_ENGINE=ollama`
+- `RAG_EMBEDDING_MODEL=embeddinggemma`
 
-1. Lege deine Wissensdateien in `open-webui/knowledge/` ab (z. B. `.md`, `.txt`, `.pdf`, `.docx`).
-2. Starte/aktualisiere den Stack mit `docker compose up -d`.
-3. In Open WebUI: **Workspace → Knowledge** öffnen und die Dateien aus diesem Ordner importieren/hochladen.
-4. Beim Chatten dann das entsprechende Knowledge-Objekt auswählen, damit die Antworten auf dieser Wissensbasis laufen (RAG).
+### Automatischer Knowledge-Ingest
+Dateien unter `open-webui/knowledge/` werden durch den Ingest-Service automatisch:
+1. in eine definierte Knowledge Base hochgeladen,
+2. bei Änderungen neu verarbeitet,
+3. bei Löschung aus dem Open-WebUI-Dateispeicher entfernt.
+
+So reicht ein `docker compose up -d`, um den automatischen Sync zu aktivieren.
 
 **Pi-hole** wird zusätzlich als lokaler DNS-Server und Ad-Blocker vorkonfiguriert. Damit die Namensauflösung im Netzwerk zuverlässig funktioniert, muss **Pi-hole im Router** – z. B. in der **FRITZ!Box** – **korrekt als DNS-Server eingetragen und eingebunden** werden.
 

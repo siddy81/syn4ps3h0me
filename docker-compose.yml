@@ -236,18 +236,73 @@ services:
     container_name: open-webui
     hostname: open-webui.${INTRANET_DOMAIN}
     restart: always
-    network_mode: host
+    networks:
+      - intranet
+    depends_on:
+      - chromadb
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       TZ: ${TZ:-Europe/Berlin}
-      OLLAMA_BASE_URL: ${OPEN_WEBUI_OLLAMA_BASE_URL:-http://127.0.0.1:8000}
+      OLLAMA_BASE_URL: ${OPEN_WEBUI_OLLAMA_BASE_URL:-http://host.docker.internal:8000}
       WEBUI_ADMIN_EMAIL: ${OPEN_WEBUI_ADMIN_EMAIL}
       WEBUI_ADMIN_PASSWORD: ${OPEN_WEBUI_ADMIN_PASSWORD}
       WEBUI_ADMIN_NAME: ${OPEN_WEBUI_ADMIN_NAME}
+      VECTOR_DB: ${VECTOR_DB:-chroma}
+      CHROMA_HTTP_HOST: ${CHROMA_HTTP_HOST:-chromadb}
+      CHROMA_HTTP_PORT: ${CHROMA_HTTP_PORT:-8000}
+      RAG_EMBEDDING_ENGINE: ${RAG_EMBEDDING_ENGINE:-ollama}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-embeddinggemma}
+      ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION: ${ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION:-false}
     volumes:
       - open-webui:/app/backend/data
-      - ./open-webui/knowledge:/app/backend/data/knowledge-import:ro
+      - ./open-webui/knowledge:/knowledge-import:ro
+    ports:
+      - "${OPEN_WEBUI_PORT:-3001}:8080"
+
+  chromadb:
+    image: chromadb/chroma:0.6.3
+    container_name: chromadb
+    hostname: chromadb.${INTRANET_DOMAIN}
+    restart: unless-stopped
+    networks:
+      - intranet
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+      CHROMA_SERVER_HOST: 0.0.0.0
+      CHROMA_SERVER_HTTP_PORT: 8000
+    volumes:
+      - chromadb_data:/chroma/chroma
+
+  open-webui-knowledge-ingest:
+    image: python:3.12-slim
+    container_name: open-webui-knowledge-ingest
+    hostname: open-webui-knowledge-ingest.${INTRANET_DOMAIN}
+    restart: unless-stopped
+    networks:
+      - intranet
+    depends_on:
+      - open-webui
+    environment:
+      OPEN_WEBUI_BASE_URL: ${OPEN_WEBUI_BASE_URL:-http://open-webui:8080}
+      OPEN_WEBUI_ADMIN_EMAIL: ${OPEN_WEBUI_ADMIN_EMAIL}
+      OPEN_WEBUI_ADMIN_PASSWORD: ${OPEN_WEBUI_ADMIN_PASSWORD}
+      OPEN_WEBUI_KNOWLEDGE_BASE_NAME: ${OPEN_WEBUI_KNOWLEDGE_BASE_NAME:-knowledge-import}
+      OPEN_WEBUI_KNOWLEDGE_BASE_DESCRIPTION: ${OPEN_WEBUI_KNOWLEDGE_BASE_DESCRIPTION:-Automatisch aus open-webui/knowledge importierte Dokumente}
+      OPEN_WEBUI_INGEST_INTERVAL_SECONDS: ${OPEN_WEBUI_INGEST_INTERVAL_SECONDS:-60}
+      OPEN_WEBUI_INGEST_REQUEST_TIMEOUT_SECONDS: ${OPEN_WEBUI_INGEST_REQUEST_TIMEOUT_SECONDS:-120}
+      OPEN_WEBUI_INGEST_LOG_LEVEL: ${OPEN_WEBUI_INGEST_LOG_LEVEL:-INFO}
+    command:
+      - sh
+      - -ec
+      - |
+        pip install --no-cache-dir requests==2.32.3 >/tmp/pip.log
+        exec python /ingest/knowledge_ingest.py
+    volumes:
+      - ./open-webui/knowledge:/knowledge-import:ro
+      - ./open-webui/ingest/knowledge_ingest.py:/ingest/knowledge_ingest.py:ro
+      - open-webui-ingest-state:/state
 
 
 
@@ -263,3 +318,5 @@ volumes:
   mosquitto_log:
   caddy_data:
   open-webui:
+  chromadb_data:
+  open-webui-ingest-state:

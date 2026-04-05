@@ -341,7 +341,7 @@ select_modules() {
     MODULE_CADDY=true
     MODULE_VOICE=true
     MODULE_LLM_CHAT=true
-    COMPOSE_SERVICES+=(mosquitto influxdb telegraf grafana pihole caddy voice-pipeline open-webui)
+    COMPOSE_SERVICES+=(mosquitto influxdb telegraf grafana pihole caddy voice-pipeline chromadb open-webui open-webui-knowledge-ingest)
     log "Option 'Alles installieren' gewählt."
   else
 
@@ -367,7 +367,7 @@ select_modules() {
 
     if ask_module "5) LLM-Chat (open-webui, hailo-ollama, model download)"; then
       MODULE_LLM_CHAT=true
-      COMPOSE_SERVICES+=(open-webui)
+      COMPOSE_SERVICES+=(chromadb open-webui open-webui-knowledge-ingest)
     fi
   fi
 
@@ -776,9 +776,20 @@ ensure_voice_env_defaults() {
     "VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30"
     "OPEN_WEBUI_PORT=3000"
     "OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:main"
-    "OPEN_WEBUI_OLLAMA_BASE_URL=http://127.0.0.1:8000"
+    "OPEN_WEBUI_OLLAMA_BASE_URL=http://host.docker.internal:8000"
     "OPEN_WEBUI_ENABLE_PERSISTENT_CONFIG=false"
     "OPEN_WEBUI_DEFAULT_MODELS=${ACTIVE_LLM_MODEL}"
+    "VECTOR_DB=chroma"
+    "CHROMA_HTTP_HOST=chromadb"
+    "CHROMA_HTTP_PORT=8000"
+    "RAG_EMBEDDING_ENGINE=ollama"
+    "RAG_EMBEDDING_MODEL=embeddinggemma"
+    "OPEN_WEBUI_BASE_URL=http://open-webui:8080"
+    "OPEN_WEBUI_KNOWLEDGE_BASE_NAME=knowledge-import"
+    "OPEN_WEBUI_KNOWLEDGE_BASE_DESCRIPTION=Automatisch aus open-webui/knowledge importierte Dokumente"
+    "OPEN_WEBUI_INGEST_INTERVAL_SECONDS=60"
+    "OPEN_WEBUI_INGEST_REQUEST_TIMEOUT_SECONDS=120"
+    "OPEN_WEBUI_INGEST_LOG_LEVEL=INFO"
   )
 
   local entry key
@@ -791,7 +802,7 @@ ensure_voice_env_defaults() {
   done
 
   upsert_env_key "OPEN_WEBUI_DEFAULT_MODELS" "${ACTIVE_LLM_MODEL}" "${ENV_FILE}"
-  upsert_env_key "OPEN_WEBUI_OLLAMA_BASE_URL" "http://127.0.0.1:8000" "${ENV_FILE}"
+  upsert_env_key "OPEN_WEBUI_OLLAMA_BASE_URL" "http://host.docker.internal:8000" "${ENV_FILE}"
   upsert_env_key "OPEN_WEBUI_IMAGE" "ghcr.io/open-webui/open-webui:main" "${ENV_FILE}"
   log "Setze OPEN_WEBUI_DEFAULT_MODELS auf ${ACTIVE_LLM_MODEL}"
 }
