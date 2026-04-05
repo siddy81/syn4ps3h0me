@@ -782,6 +782,8 @@ ensure_voice_env_defaults() {
     "VECTOR_DB=chroma"
     "CHROMA_HTTP_HOST=chromadb"
     "CHROMA_HTTP_PORT=8000"
+    "CHROMA_TENANT=default_tenant"
+    "CHROMA_DATABASE=default_database"
     "RAG_EMBEDDING_ENGINE=ollama"
     "RAG_EMBEDDING_MODEL=embeddinggemma"
     "OPEN_WEBUI_BASE_URL=http://open-webui:8080"

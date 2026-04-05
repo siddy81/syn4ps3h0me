@@ -33,7 +33,7 @@ Open WebUI spricht die Vector-DB über die eigene RAG-Schicht an; das Chat-Infer
 ### Architektur
 - Chat-Modelle: über `OLLAMA_BASE_URL` (z. B. `hailo-ollama`/Ollama-Backend)
 - Vector Store für RAG: `chromadb` (persistentes Docker-Volume)
-- ChromaDB-Image ist auf eine Open-WebUI-kompatible 0.5.x-Version gepinnt
+- ChromaDB-Image ist auf die in den Open-WebUI-Beispielen genutzte `0.5.15` gepinnt
 - Open WebUI: zentrale RAG-Orchestrierung (Embeddings, Retrieval, Answering)
 - Optionaler Datei-Ingest: `open-webui-knowledge-ingest` für `open-webui/knowledge/`
 
@@ -41,6 +41,8 @@ Open WebUI spricht die Vector-DB über die eigene RAG-Schicht an; das Chat-Infer
 - `VECTOR_DB=chroma`
 - `CHROMA_HTTP_HOST=chromadb`
 - `CHROMA_HTTP_PORT=8000`
+- `CHROMA_TENANT=default_tenant`
+- `CHROMA_DATABASE=default_database`
 - `RAG_EMBEDDING_ENGINE=ollama`
 - `RAG_EMBEDDING_MODEL=embeddinggemma`
 

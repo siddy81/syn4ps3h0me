@@ -12,6 +12,7 @@ import pathlib
 import sys
 import time
 from dataclasses import dataclass
+from typing import Any
 import requests
 
 
@@ -183,12 +184,29 @@ class OpenWebUIClient:
     return str(file_id)
 
   def add_file_to_knowledge_base(self, knowledge_base_id: str, file_id: str) -> None:
-    response = self._session.post(
-      f"{self._config.base_url}/api/v1/knowledge/{knowledge_base_id}/file/add",
-      json={"file_id": file_id},
-      timeout=DEFAULT_TIMEOUT,
+    endpoints: list[tuple[str, Any]] = [
+      (f"/api/v1/knowledge/{knowledge_base_id}/file/add", {"file_id": file_id}),
+      (f"/api/v1/knowledge/{knowledge_base_id}/files/batch/add", [{"file_id": file_id}]),
+      (f"/api/v1/knowledge/{knowledge_base_id}/add", {"file_id": file_id}),
+    ]
+    last_error: str | None = None
+
+    for endpoint, payload in endpoints:
+      response = self._session.post(
+        f"{self._config.base_url}{endpoint}",
+        json=payload,
+        timeout=DEFAULT_TIMEOUT,
+      )
+      if response.status_code < 400:
+        return
+      last_error = (
+        f"endpoint={endpoint} status={response.status_code} body={response.text[:300]}"
+      )
+
+    raise RuntimeError(
+      "Unable to attach uploaded file to knowledge base. "
+      f"file_id={file_id}, knowledge_base_id={knowledge_base_id}, last_error={last_error}"
     )
-    response.raise_for_status()
 
   def delete_file(self, file_id: str) -> None:
     response = self._session.delete(
@@ -251,8 +269,10 @@ def main() -> int:
       knowledge_base_id = client.get_or_create_knowledge_base()
       if ingest_once(client, knowledge_base_id, state):
         save_state(state)
-    except requests.RequestException as exc:
+    except requests.ConnectionError as exc:
       logging.warning("Open WebUI API not available yet: %s", exc)
+    except requests.RequestException as exc:
+      logging.exception("Open WebUI API request failed: %s", exc)
     except Exception as exc:  # pylint: disable=broad-except
       logging.exception("Ingest cycle failed: %s", exc)
 
