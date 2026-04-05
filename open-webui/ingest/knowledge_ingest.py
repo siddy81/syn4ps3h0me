@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import mimetypes
 import os
 import pathlib
 import sys
@@ -74,6 +75,11 @@ def sha256sum(path: pathlib.Path) -> str:
     for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
       digest.update(chunk)
   return digest.hexdigest()
+
+
+def detect_content_type(path: pathlib.Path) -> str:
+  guessed, _ = mimetypes.guess_type(path.name)
+  return guessed or "application/octet-stream"
 
 
 def load_state() -> dict[str, dict[str, str]]:
@@ -159,10 +165,14 @@ class OpenWebUIClient:
     return str(kb_id)
 
   def upload_file(self, file_path: pathlib.Path) -> str:
+    if file_path.stat().st_size == 0:
+      raise ValueError(f"Cannot upload empty file: {file_path}")
+
+    content_type = detect_content_type(file_path)
     with file_path.open("rb") as binary:
       response = self._session.post(
         f"{self._config.base_url}/api/v1/files/",
-        files={"file": (file_path.name, binary)},
+        files={"file": (file_path.name, binary, content_type)},
         timeout=DEFAULT_TIMEOUT,
       )
     response.raise_for_status()
@@ -203,6 +213,10 @@ def ingest_once(client: OpenWebUIClient, knowledge_base_id: str, state: dict[str
       changed = True
 
   for relative, absolute_path in current_paths.items():
+    if absolute_path.stat().st_size == 0:
+      logging.warning("Skipping empty source file: %s", relative)
+      continue
+
     file_hash = sha256sum(absolute_path)
     current_state = state.get(relative)
     if current_state and current_state.get("sha256") == file_hash:

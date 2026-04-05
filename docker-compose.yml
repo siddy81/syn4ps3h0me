@@ -261,7 +261,7 @@ services:
       - "${OPEN_WEBUI_PORT:-3001}:8080"
 
   chromadb:
-    image: chromadb/chroma:0.6.3
+    image: chromadb/chroma:0.5.23
     container_name: chromadb
     hostname: chromadb.${INTRANET_DOMAIN}
     restart: unless-stopped
