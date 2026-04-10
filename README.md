@@ -161,7 +161,7 @@ VOICE_TTS_SHELL_COMMAND=
 Für das Routing auf mehrere Shellys wird eine Lookup-Tabelle verwendet (Raum/Alternative Bezeichnungen/Gruppe → DNS/IP).
 Beispiel: `voice-pipeline/app/config/shelly_devices.example.json`.
 
-Das wiederverwendbare Shelly-Script liegt in `shelly_script/shelly_1pm_light_control.js`.
+Das wiederverwendbare Shelly-Script liegt in `shelly_script/shelly_1pm_control.js`.
 
 Kurzablauf:
 1. Shelly Web UI öffnen → **Scripts**
