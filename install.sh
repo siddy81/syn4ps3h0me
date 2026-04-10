@@ -191,6 +191,18 @@ ensure_non_secret_env_defaults() {
   done
 }
 
+read_env_key() {
+  local key="$1"
+  local env_file="$2"
+
+  [[ -f "${env_file}" ]] || {
+    echo ""
+    return 0
+  }
+
+  awk -F= -v k="${key}" 'index($0, k "=") == 1 { print substr($0, length(k)+2); exit }' "${env_file}"
+}
+
 env_key_has_value() {
   local key="$1"
   local env_file="$2"
@@ -765,13 +777,20 @@ ensure_voice_env_defaults() {
     "VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0"
     "VOICE_POST_WAKE_RECORD_SECONDS=6"
     "VOICE_HAILO_APPS_DIR=/home/siddy/workspace/hailo-apps"
-    "VOICE_HAILO_VENV_PYTHON=/home/siddy/workspace/hailo-apps/venv_hailo_apps/bin/python"
-    "VOICE_WHISPER_BACKEND=hailo_local_cmd"
-    "VOICE_HAILO_WHISPER_CMD=cd /home/siddy/workspace/hailo-apps && source setup_env.sh && /home/siddy/workspace/hailo-apps/venv_hailo_apps/bin/python -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat --audio-file {audio_path} --language {language}"
-    "VOICE_HAILO_WHISPER_CMD_TIMEOUT=120"
-    "VOICE_WHISPER_MODEL=tiny"
-    "VOICE_WHISPER_COMPUTE_TYPE=int8"
+    "VOICE_WHISPER_MODE=hf_local"
+    "VOICE_WHISPER_MODEL=openai/whisper-base"
     "VOICE_WHISPER_LANGUAGE=de"
+    "VOICE_WHISPER_CACHE_DIR=/home/siddy/.cache/huggingface"
+    "VOICE_LLM_BASE_URL=http://host.docker.internal:8000"
+    "VOICE_LLM_MODEL=llama3.2:3b"
+    "VOICE_LLM_TIMEOUT_SECONDS=45"
+    "SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json"
+    "SHELLY_DEVICE_MAP_JSON="
+    "SHELLY_DEFAULT_COMMAND_PATH=/script/light-control"
+    "SHELLY_TIMEOUT_SECONDS=5"
+    "VOICE_TTS_SHELL_COMMAND="
+    "VOICE_TTS_AUTO_ENABLED=true"
+    "VOICE_TTS_LANGUAGE=de"
     "VOICE_AUDIO_SAMPLE_RATE=16000"
     "VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30"
     "OPEN_WEBUI_PORT=3000"
@@ -790,10 +809,37 @@ ensure_voice_env_defaults() {
     fi
   done
 
+  local current_llm_base
+  current_llm_base="$(read_env_key "VOICE_LLM_BASE_URL" "${ENV_FILE}")"
+  if [[ "${current_llm_base}" == "http://127.0.0.1:8000" || "${current_llm_base}" == "http://localhost:8000" ]]; then
+    upsert_env_key "VOICE_LLM_BASE_URL" "http://host.docker.internal:8000" "${ENV_FILE}"
+    log "Migriere VOICE_LLM_BASE_URL auf host.docker.internal für Container-Zugriff."
+  fi
+
   upsert_env_key "OPEN_WEBUI_DEFAULT_MODELS" "${ACTIVE_LLM_MODEL}" "${ENV_FILE}"
   upsert_env_key "OPEN_WEBUI_OLLAMA_BASE_URL" "http://127.0.0.1:8000" "${ENV_FILE}"
   upsert_env_key "OPEN_WEBUI_IMAGE" "ghcr.io/open-webui/open-webui:main" "${ENV_FILE}"
   log "Setze OPEN_WEBUI_DEFAULT_MODELS auf ${ACTIVE_LLM_MODEL}"
+}
+
+
+ensure_whisper_model_cache() {
+  cd "${PROJECT_DIR}"
+  ensure_env_file_present
+
+  local cache_dir
+  cache_dir="$(read_env_key "VOICE_WHISPER_CACHE_DIR" "${ENV_FILE}")"
+  [[ -z "${cache_dir}" ]] && cache_dir="/home/${REAL_USER}/.cache/huggingface"
+
+  mkdir -p "${cache_dir}"
+  chown -R "${REAL_USER}:${REAL_USER}" "${cache_dir}" 2>/dev/null || true
+
+  log "Prüfe/Cache Whisper-Modell openai/whisper-base in ${cache_dir} ..."
+  if ${SUDO} docker compose run --rm voice-pipeline python -c "from huggingface_hub import snapshot_download; snapshot_download('openai/whisper-base', cache_dir='/models/huggingface')"; then
+    log "Whisper-Modell openai/whisper-base ist verfügbar."
+  else
+    warn "Whisper-Modell konnte nicht vorab geladen werden. Wird ggf. beim ersten Lauf geladen."
+  fi
 }
 
 build_voice_service_image() {
@@ -990,6 +1036,7 @@ main() {
   if [[ "${MODULE_VOICE}" == "true" ]]; then
     voice_pipeline_preflight
     build_voice_service_image
+    ensure_whisper_model_cache
   fi
 
   compose_up

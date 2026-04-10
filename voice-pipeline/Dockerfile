@@ -11,6 +11,7 @@ RUN apt-get update \
       ffmpeg \
       alsa-utils \
       pulseaudio-utils \
+      espeak-ng \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

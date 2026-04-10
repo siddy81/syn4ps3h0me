@@ -131,6 +131,51 @@ Das Skript erledigt automatisiert folgende Schritte:
 - Prüfe Container mit `docker compose ps`.
 - Falls Gruppenrechte neu sind: einmal ab- und wieder anmelden.
 
+### Voice-Pipeline: Wake-Word → Whisper → Router → LLM/Shelly
+Die Voice-Pipeline nutzt Wake-Word-Erkennung (Jarvis), transkribiert das Folgekommando lokal über `openai/whisper-base` und routet danach regelbasiert:
+
+- Smart-Home-Kommandos (z. B. „schalte das Licht in der Küche aus“) → Shelly REST
+- alle anderen Kommandos → lokales LLM `llama3.2:3b`
+
+Empfohlene `.env`-Einträge:
+```env
+VOICE_WHISPER_MODE=hf_local
+VOICE_WHISPER_MODEL=openai/whisper-base
+VOICE_WHISPER_LANGUAGE=de
+VOICE_WHISPER_CACHE_DIR=/home/siddy/.cache/huggingface
+
+VOICE_LLM_BASE_URL=http://host.docker.internal:8000
+VOICE_LLM_MODEL=llama3.2:3b
+VOICE_LLM_TIMEOUT_SECONDS=45
+
+SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json
+SHELLY_DEVICE_MAP_JSON=
+SHELLY_DEFAULT_COMMAND_PATH=/script/light-control
+SHELLY_TIMEOUT_SECONDS=5
+
+VOICE_TTS_SHELL_COMMAND=
+VOICE_TTS_AUTO_ENABLED=true
+VOICE_TTS_LANGUAGE=de
+```
+
+### Shelly-Script bereitstellen
+
+Für das Routing auf mehrere Shellys wird eine Lookup-Tabelle verwendet (Raum/Alternative Bezeichnungen/Gruppe → DNS/IP).
+Beispiel: `voice-pipeline/app/config/shelly_devices.example.json`.
+
+Das wiederverwendbare Shelly-Script liegt in `shelly_script/shelly_1pm_control.js`.
+
+Kurzablauf:
+1. Shelly Web UI öffnen → **Scripts**
+2. Neues Script anlegen, Inhalt aus Datei einfügen (gleiches Script auf jedem Ziel-Shelly)
+3. Script starten
+4. Für jeden Shelly einen eindeutigen DNS-/IP-Eintrag in die Lookup-Tabelle setzen
+5. Testen mit: `http://<SHELLY-IP>/script/light-control?action=off`
+
+Antwort ist JSON mit `ok=true|false` und `message`, was von der Python-Pipeline ausgewertet wird.
+
+Ohne `VOICE_TTS_SHELL_COMMAND` nutzt die Pipeline automatisch `espeak-ng` + `paplay` und versucht die Ausgabe auf **allen erkannten Pulse-Sinks** abzuspielen.
+
 ## 1. Architekturüberblick
 
 ### Was macht Pi-hole?
