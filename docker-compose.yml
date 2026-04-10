@@ -232,6 +232,8 @@ services:
       SHELLY_DEFAULT_COMMAND_PATH: ${SHELLY_DEFAULT_COMMAND_PATH:-/script/light-control}
       SHELLY_TIMEOUT_SECONDS: ${SHELLY_TIMEOUT_SECONDS:-5}
       TTS_SHELL_COMMAND: ${VOICE_TTS_SHELL_COMMAND:-}
+      TTS_AUTO_ENABLED: ${VOICE_TTS_AUTO_ENABLED:-true}
+      TTS_LANGUAGE: ${VOICE_TTS_LANGUAGE:-de}
     healthcheck:
       test: ["CMD-SHELL", "pactl list sources short >/dev/null 2>&1"]
       interval: 30s

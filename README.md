@@ -154,6 +154,8 @@ SHELLY_DEFAULT_COMMAND_PATH=/script/light-control
 SHELLY_TIMEOUT_SECONDS=5
 
 VOICE_TTS_SHELL_COMMAND=
+VOICE_TTS_AUTO_ENABLED=true
+VOICE_TTS_LANGUAGE=de
 ```
 
 ### Shelly-Script bereitstellen
@@ -171,6 +173,8 @@ Kurzablauf:
 5. Testen mit: `http://<SHELLY-IP>/script/light-control?action=off`
 
 Antwort ist JSON mit `ok=true|false` und `message`, was von der Python-Pipeline ausgewertet wird.
+
+Ohne `VOICE_TTS_SHELL_COMMAND` nutzt die Pipeline automatisch `espeak-ng` + `paplay` und versucht die Ausgabe auf **allen erkannten Pulse-Sinks** abzuspielen.
 
 ## 1. Architekturüberblick
 
