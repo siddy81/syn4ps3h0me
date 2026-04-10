@@ -1,4 +1,4 @@
-name: shelly-stack
+name: syn4ps3h0me
 
 x-auth-env: &auth-env
   MQTT_USER: ${MQTT_USER}

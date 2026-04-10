@@ -145,11 +145,11 @@ uninstall_smarthome() {
   compose_stop_and_remove_service telegraf
   compose_stop_and_remove_service grafana
 
-  remove_volume_if_exists "shelly-stack_mosquitto_data"
-  remove_volume_if_exists "shelly-stack_mosquitto_log"
-  remove_volume_if_exists "shelly-stack_influxdb_data"
-  remove_volume_if_exists "shelly-stack_influxdb_config"
-  remove_volume_if_exists "shelly-stack_grafana_data"
+  remove_volume_if_exists "syn4ps3h0me_mosquitto_data"
+  remove_volume_if_exists "syn4ps3h0me_mosquitto_log"
+  remove_volume_if_exists "syn4ps3h0me_influxdb_data"
+  remove_volume_if_exists "syn4ps3h0me_influxdb_config"
+  remove_volume_if_exists "syn4ps3h0me_grafana_data"
 }
 
 uninstall_pihole() {
@@ -160,7 +160,7 @@ uninstall_pihole() {
 uninstall_caddy() {
   log "Deinstalliere Modul: Caddy"
   compose_stop_and_remove_service caddy
-  remove_volume_if_exists "shelly-stack_caddy_data"
+  remove_volume_if_exists "syn4ps3h0me_caddy_data"
 }
 
 uninstall_voice_pipeline() {
@@ -168,14 +168,14 @@ uninstall_voice_pipeline() {
   compose_stop_and_remove_service voice-pipeline
 
   if command -v docker >/dev/null 2>&1; then
-    ${SUDO} docker image rm shelly-stack-voice-pipeline >/dev/null 2>&1 || true
+    ${SUDO} docker image rm syn4ps3h0me-voice-pipeline >/dev/null 2>&1 || true
   fi
 }
 
 uninstall_llm_chat() {
   log "Deinstalliere Modul: LLM-Chat"
   compose_stop_and_remove_service open-webui
-  remove_volume_if_exists "shelly-stack_open-webui"
+  remove_volume_if_exists "syn4ps3h0me_open-webui"
 
   if ${SUDO} systemctl list-unit-files | grep -q '^hailo-ollama\.service'; then
     ${SUDO} systemctl disable --now hailo-ollama.service >/dev/null 2>&1 || true

@@ -264,7 +264,7 @@ Wichtig:
 Wenn du von einer älteren Caddy-Konfiguration kommst und der Container weiterhin mit alten Fehlern startet, entferne einmalig alte persistierte Caddy-Config:
 ```bash
 docker compose down
-docker volume rm shelly-stack_caddy_config 2>/dev/null || true
+docker volume rm syn4ps3h0me_caddy_config 2>/dev/null || true
 docker compose up -d --force-recreate caddy
 ```
 
