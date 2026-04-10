@@ -139,7 +139,8 @@ Die Voice-Pipeline prüft beim Start, ob ein ausführbarer Hailo-Python-Interpre
   1. `venv_hailo_apps/bin/python`
   2. `.venv/bin/python`
   3. `venv/bin/python`
-- Fehlt ein gültiger Interpreter, stoppt die Pipeline mit einer klaren Fehlermeldung und den geprüften Pfaden.
+- Wenn dort nichts gefunden wird, wird `setup_env.sh` geladen und `python` daraus automatisch aufgelöst.
+- Fehlt weiterhin ein gültiger Interpreter, stoppt die Pipeline mit einer klaren Fehlermeldung inkl. Kandidaten + `setup_env`-Probe.
 
 Beispiel für `.env`:
 ```env
