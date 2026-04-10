@@ -131,6 +131,23 @@ Das Skript erledigt automatisiert folgende Schritte:
 - Prüfe Container mit `docker compose ps`.
 - Falls Gruppenrechte neu sind: einmal ab- und wieder anmelden.
 
+### Voice-Pipeline: Hailo-Whisper Interpreter konfigurieren
+Die Voice-Pipeline prüft beim Start, ob ein ausführbarer Hailo-Python-Interpreter vorhanden ist.
+
+- Optional explizit setzen: `VOICE_HAILO_VENV_PYTHON=/pfad/zum/venv/bin/python`
+- Wenn leer, wird automatisch in `VOICE_HAILO_APPS_DIR` gesucht (in dieser Reihenfolge):
+  1. `venv_hailo_apps/bin/python`
+  2. `.venv/bin/python`
+  3. `venv/bin/python`
+- Fehlt ein gültiger Interpreter, stoppt die Pipeline mit einer klaren Fehlermeldung und den geprüften Pfaden.
+
+Beispiel für `.env`:
+```env
+VOICE_HAILO_APPS_DIR=/home/siddy/workspace/hailo-apps
+VOICE_HAILO_VENV_PYTHON=
+VOICE_HAILO_WHISPER_CMD=cd {hailo_apps_dir} && source setup_env.sh && {hailo_python} -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat --audio-file {audio_path} --language {language}
+```
+
 ## 1. Architekturüberblick
 
 ### Was macht Pi-hole?

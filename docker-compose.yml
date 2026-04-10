@@ -221,7 +221,7 @@ services:
       WHISPER_MODEL: ${VOICE_WHISPER_MODEL:-tiny}
       WHISPER_COMPUTE_TYPE: ${VOICE_WHISPER_COMPUTE_TYPE:-int8}
       WHISPER_LANGUAGE: ${VOICE_WHISPER_LANGUAGE:-de}
-      HAILO_VENV_PYTHON: /home/siddy/workspace/hailo-apps/venv_hailo_apps/bin/python
+      HAILO_VENV_PYTHON: ${VOICE_HAILO_VENV_PYTHON:-}
       HAILO_WHISPER_CMD: ${VOICE_HAILO_WHISPER_CMD:-cd {hailo_apps_dir} && source setup_env.sh && {hailo_python} -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat --audio-file {audio_path} --language {language}}
       HAILO_WHISPER_CMD_TIMEOUT: ${VOICE_HAILO_WHISPER_CMD_TIMEOUT:-120}
     healthcheck:

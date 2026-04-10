@@ -12,6 +12,8 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+from .hailo_runtime import resolve_hailo_runtime_from_env, validate_hailo_runtime
+
 import numpy as np
 from openwakeword.model import Model
 
@@ -74,20 +76,17 @@ class Transcriber:
     def __init__(self) -> None:
         self.mode = os.getenv("WHISPER_BACKEND", "hailo_local_cmd").lower()
         self.language = os.getenv("WHISPER_LANGUAGE", "de")
-        self.hailo_apps_dir = os.getenv("HAILO_APPS_DIR", "/home/siddy/workspace/hailo-apps")
-        self.hailo_python = os.getenv("HAILO_VENV_PYTHON", "/home/siddy/workspace/hailo-apps/venv_hailo_apps/bin/python")
-        self.cmd_template = os.getenv(
-            "HAILO_WHISPER_CMD",
-            "cd {hailo_apps_dir} && source setup_env.sh && {hailo_python} -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat --audio-file {audio_path} --language {language}",
-        )
         self.cmd_timeout = int(os.getenv("HAILO_WHISPER_CMD_TIMEOUT", "120"))
 
         if self.mode != "hailo_local_cmd":
             raise ValueError("Nur WHISPER_BACKEND=hailo_local_cmd ist erlaubt.")
 
+        self.runtime = resolve_hailo_runtime_from_env()
+        validate_hailo_runtime(self.runtime)
+
         logger.info("Whisper-Modus: hailo_local_cmd.")
-        logger.info("Hailo Whisper Kommando-Template: %s", self.cmd_template)
-        logger.info("Hailo Venv Python: %s", self.hailo_python)
+        logger.info("Hailo Whisper Kommando-Template: %s", self.runtime.whisper_cmd_template)
+        logger.info("Hailo Venv Python: %s", self.runtime.hailo_python)
 
     def _extract_transcript(self, output: str) -> str | None:
         if not output.strip():
@@ -119,58 +118,55 @@ class Transcriber:
         logger.info("Hailo-Probe [%s] rc=%s output=%s", label, result.returncode, output)
 
     def _log_runtime_probe(self) -> None:
-        escaped_dir = self.hailo_apps_dir
+        escaped_dir = str(self.runtime.hailo_apps_dir)
         self._run_probe("pwd", f"cd {escaped_dir} && pwd")
-        self._run_probe("ls_hailo_apps", "ls -la /home/siddy/workspace/hailo-apps")
-        self._run_probe("ls_venv_bin", "ls -la /home/siddy/workspace/hailo-apps/venv_hailo_apps/bin")
+        self._run_probe("ls_hailo_apps", f"ls -la {escaped_dir}")
+        self._run_probe("ls_venv_bin", f"ls -la {self.runtime.hailo_python.parent}")
         self._run_probe("which_python", f"cd {escaped_dir} && source setup_env.sh && which python")
         self._run_probe("sys_executable", f'cd {escaped_dir} && source setup_env.sh && python -c "import sys; print(sys.executable)"')
-        self._run_probe("hailo_platform_venv", f'{self.hailo_python} -c "import hailo_platform; print(hailo_platform.__file__)"')
+        self._run_probe("hailo_platform_venv", f'{self.runtime.hailo_python} -c "import hailo_platform; print(hailo_platform.__file__)"')
 
     def transcribe(self, wav_path: Path) -> str | None:
-        apps_dir = Path(self.hailo_apps_dir)
-        setup_env_file = apps_dir / "setup_env.sh"
-        hailo_python_file = Path(self.hailo_python)
-        if not apps_dir.exists():
-            logger.error("Hailo-Apps-Verzeichnis nicht gefunden: %s", apps_dir)
-            return None
-        if not setup_env_file.exists():
-            logger.error("setup_env.sh nicht gefunden: %s", setup_env_file)
-            return None
-        if not hailo_python_file.exists():
-            logger.error("Hailo venv python nicht gefunden: %s", hailo_python_file)
+        try:
+            validate_hailo_runtime(self.runtime)
+        except (FileNotFoundError, PermissionError) as exc:
+            logger.error("Hailo-Runtime ungültig: %s", exc)
             return None
 
         self._log_runtime_probe()
 
         cmd = (
-            self.cmd_template
+            self.runtime.whisper_cmd_template
             .replace("{audio_path}", str(wav_path))
             .replace("{language}", self.language)
-            .replace("{hailo_apps_dir}", self.hailo_apps_dir)
-            .replace("{hailo_python}", self.hailo_python)
+            .replace("{hailo_apps_dir}", str(self.runtime.hailo_apps_dir))
+            .replace("{hailo_python}", str(self.runtime.hailo_python))
         )
         logger.info("Starte Hailo-Whisper-Transkription über lokalen Command-Pfad.")
 
-        result = subprocess.run(
-            ["bash", "-lc", cmd],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=self.cmd_timeout,
-        )
+        try:
+            result = subprocess.run(
+                ["bash", "-lc", cmd],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=self.cmd_timeout,
+            )
+        except subprocess.TimeoutExpired:
+            logger.error("Hailo-Whisper Kommando lief in Timeout (%ss): %s", self.cmd_timeout, cmd)
+            return None
 
         combined_output = "\n".join(part for part in [result.stdout, result.stderr] if part)
         if result.returncode != 0:
-            logger.error("Hailo-Whisper Kommando fehlgeschlagen (rc=%s).", result.returncode)
-            logger.error("Command: %s", cmd)
-            logger.error("Output: %s", combined_output.strip())
+            logger.error("Hailo-Whisper-Aufruf fehlgeschlagen (rc=%s).", result.returncode)
+            logger.error("Whisper-Command: %s", cmd)
+            logger.error("Whisper-Output: %s", combined_output.strip())
             return None
 
         transcript = self._extract_transcript(combined_output)
         if not transcript:
-            logger.error("Hailo-Whisper lieferte keinen extrahierbaren Transkript-Text.")
-            logger.error("Command Output: %s", combined_output.strip())
+            logger.error("Hailo-Whisper lieferte leeres Ergebnis.")
+            logger.error("Whisper-Output: %s", combined_output.strip())
             return None
 
         logger.info("Hailo-Whisper Transkription erfolgreich über lokalen Pfad.")
