@@ -191,6 +191,18 @@ ensure_non_secret_env_defaults() {
   done
 }
 
+read_env_key() {
+  local key="$1"
+  local env_file="$2"
+
+  [[ -f "${env_file}" ]] || {
+    echo ""
+    return 0
+  }
+
+  awk -F= -v k="${key}" 'index($0, k "=") == 1 { print substr($0, length(k)+2); exit }' "${env_file}"
+}
+
 env_key_has_value() {
   local key="$1"
   local env_file="$2"
