@@ -1,0 +1,26 @@
+[
+  {
+    "id": "kueche_lampe1",
+    "room": "kueche",
+    "group": "kueche",
+    "aliases": ["küche", "kueche", "küchenlicht", "lampe1", "küche lampe1"],
+    "base_url": "http://kueche-lampe1.arkham.asylum",
+    "command_path": "/script/light-control"
+  },
+  {
+    "id": "kueche_lampe2",
+    "room": "kueche",
+    "group": "kueche",
+    "aliases": ["küche lampe2", "kueche lampe2", "lampe2"],
+    "base_url": "http://kueche-lampe2.arkham.asylum",
+    "command_path": "/script/light-control"
+  },
+  {
+    "id": "wohnzimmer_licht",
+    "room": "wohnzimmer",
+    "group": "wohnzimmer",
+    "aliases": ["wohnzimmer", "wohnzimmer licht", "wohnzimmerlampe"],
+    "base_url": "http://wohnzimmer-licht.arkham.asylum",
+    "command_path": "/script/light-control"
+  }
+]

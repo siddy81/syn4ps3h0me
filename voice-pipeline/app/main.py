@@ -2,11 +2,9 @@ import json
 import logging
 import os
 import queue
-import re
 import subprocess
 import threading
 import time
-from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -15,166 +13,18 @@ from typing import Any
 import numpy as np
 from openwakeword.model import Model
 
+from .integrations.llm_client import OllamaClient
+from .integrations.shelly_client import ShellyClient
+from .router import CommandRouter, RouteTarget
+from .stt_whisper import WhisperHFTranscriber
+from .tts import TTSClient
+
 
 logging.basicConfig(
     level=os.getenv("VOICE_LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s %(levelname)s [voice-pipeline] %(message)s",
 )
 logger = logging.getLogger("voice_pipeline")
-
-
-@dataclass
-class ParsedCommand:
-    raw_text: str
-    normalized_text: str
-    wake_word_detected: bool
-    intent: str
-    target_device: str | None
-    action: str | None
-    value: str | None
-
-
-class RuleBasedParser:
-    def parse(self, transcript: str, wake_word_detected: bool) -> ParsedCommand:
-        normalized = re.sub(r"\s+", " ", transcript.strip().lower())
-        target = "light" if re.search(r"\b(licht|lampe|beleuchtung)\b", normalized) else None
-        if not target and re.search(r"\b(steckdose|socket|switch)\b", normalized):
-            target = "switch"
-
-        action: str | None = None
-        value: str | None = None
-        if re.search(r"\b(an|einschalten|ein)\b", normalized):
-            action = "turn_on"
-        elif re.search(r"\b(aus|ausschalten)\b", normalized):
-            action = "turn_off"
-        else:
-            percentage_match = re.search(r"\b(\d{1,3})\s*(prozent|%)\b", normalized)
-            if percentage_match:
-                action = "set_value"
-                value = percentage_match.group(1)
-
-        intent = "unknown"
-        if action in {"turn_on", "turn_off"}:
-            intent = "device_control"
-        elif action == "set_value":
-            intent = "device_setting"
-
-        return ParsedCommand(
-            raw_text=transcript,
-            normalized_text=normalized,
-            wake_word_detected=wake_word_detected,
-            intent=intent,
-            target_device=target,
-            action=action,
-            value=value,
-        )
-
-
-class Transcriber:
-    def __init__(self) -> None:
-        self.mode = os.getenv("WHISPER_BACKEND", "hailo_local_cmd").lower()
-        self.language = os.getenv("WHISPER_LANGUAGE", "de")
-        self.hailo_apps_dir = os.getenv("HAILO_APPS_DIR", "/home/siddy/workspace/hailo-apps")
-        self.hailo_python = os.getenv("HAILO_VENV_PYTHON", "/home/siddy/workspace/hailo-apps/venv_hailo_apps/bin/python")
-        self.cmd_template = os.getenv(
-            "HAILO_WHISPER_CMD",
-            "cd {hailo_apps_dir} && source setup_env.sh && {hailo_python} -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat --audio-file {audio_path} --language {language}",
-        )
-        self.cmd_timeout = int(os.getenv("HAILO_WHISPER_CMD_TIMEOUT", "120"))
-
-        if self.mode != "hailo_local_cmd":
-            raise ValueError("Nur WHISPER_BACKEND=hailo_local_cmd ist erlaubt.")
-
-        logger.info("Whisper-Modus: hailo_local_cmd.")
-        logger.info("Hailo Whisper Kommando-Template: %s", self.cmd_template)
-        logger.info("Hailo Venv Python: %s", self.hailo_python)
-
-    def _extract_transcript(self, output: str) -> str | None:
-        if not output.strip():
-            return None
-
-        lines = [line.strip() for line in output.splitlines() if line.strip()]
-
-        for line in reversed(lines):
-            if line.startswith("{") and line.endswith("}"):
-                try:
-                    payload = json.loads(line)
-                    for key in ("text", "transcript", "result"):
-                        value = payload.get(key)
-                        if isinstance(value, str) and value.strip():
-                            return value.strip()
-                except json.JSONDecodeError:
-                    pass
-
-        for line in reversed(lines):
-            normalized = line.lower()
-            if normalized.startswith("transcript:"):
-                return line.split(":", 1)[1].strip()
-
-        return lines[-1]
-
-    def _run_probe(self, label: str, cmd: str) -> None:
-        result = subprocess.run(["bash", "-lc", cmd], capture_output=True, text=True, check=False)
-        output = (result.stdout or result.stderr or "").strip()
-        logger.info("Hailo-Probe [%s] rc=%s output=%s", label, result.returncode, output)
-
-    def _log_runtime_probe(self) -> None:
-        escaped_dir = self.hailo_apps_dir
-        self._run_probe("pwd", f"cd {escaped_dir} && pwd")
-        self._run_probe("ls_hailo_apps", "ls -la /home/siddy/workspace/hailo-apps")
-        self._run_probe("ls_venv_bin", "ls -la /home/siddy/workspace/hailo-apps/venv_hailo_apps/bin")
-        self._run_probe("which_python", f"cd {escaped_dir} && source setup_env.sh && which python")
-        self._run_probe("sys_executable", f'cd {escaped_dir} && source setup_env.sh && python -c "import sys; print(sys.executable)"')
-        self._run_probe("hailo_platform_venv", f'{self.hailo_python} -c "import hailo_platform; print(hailo_platform.__file__)"')
-
-    def transcribe(self, wav_path: Path) -> str | None:
-        apps_dir = Path(self.hailo_apps_dir)
-        setup_env_file = apps_dir / "setup_env.sh"
-        hailo_python_file = Path(self.hailo_python)
-        if not apps_dir.exists():
-            logger.error("Hailo-Apps-Verzeichnis nicht gefunden: %s", apps_dir)
-            return None
-        if not setup_env_file.exists():
-            logger.error("setup_env.sh nicht gefunden: %s", setup_env_file)
-            return None
-        if not hailo_python_file.exists():
-            logger.error("Hailo venv python nicht gefunden: %s", hailo_python_file)
-            return None
-
-        self._log_runtime_probe()
-
-        cmd = (
-            self.cmd_template
-            .replace("{audio_path}", str(wav_path))
-            .replace("{language}", self.language)
-            .replace("{hailo_apps_dir}", self.hailo_apps_dir)
-            .replace("{hailo_python}", self.hailo_python)
-        )
-        logger.info("Starte Hailo-Whisper-Transkription über lokalen Command-Pfad.")
-
-        result = subprocess.run(
-            ["bash", "-lc", cmd],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=self.cmd_timeout,
-        )
-
-        combined_output = "\n".join(part for part in [result.stdout, result.stderr] if part)
-        if result.returncode != 0:
-            logger.error("Hailo-Whisper Kommando fehlgeschlagen (rc=%s).", result.returncode)
-            logger.error("Command: %s", cmd)
-            logger.error("Output: %s", combined_output.strip())
-            return None
-
-        transcript = self._extract_transcript(combined_output)
-        if not transcript:
-            logger.error("Hailo-Whisper lieferte keinen extrahierbaren Transkript-Text.")
-            logger.error("Command Output: %s", combined_output.strip())
-            return None
-
-        logger.info("Hailo-Whisper Transkription erfolgreich über lokalen Pfad.")
-        return transcript
 
 
 class VoicePipeline:
@@ -192,8 +42,11 @@ class VoicePipeline:
         self._model: Model | None = None
         self._active_threads: dict[str, threading.Thread] = {}
 
-        self._transcriber = Transcriber()
-        self._parser = RuleBasedParser()
+        self._transcriber = WhisperHFTranscriber()
+        self._router = CommandRouter()
+        self._llm = OllamaClient()
+        self._shelly = ShellyClient()
+        self._tts = TTSClient()
 
     @staticmethod
     def _run_cmd(cmd: list[str]) -> tuple[int, str]:
@@ -215,16 +68,14 @@ class VoicePipeline:
             if len(parts) < 2:
                 continue
             name = parts[1]
-            is_monitor = name.endswith(".monitor")
-            is_bluetooth = "bluez_input" in name
             sources.append(
                 {
                     "index": parts[0],
                     "name": name,
                     "driver": parts[3] if len(parts) > 3 else "",
-                    "is_monitor": is_monitor,
-                    "is_bluetooth": is_bluetooth,
-                    "accepted": not is_monitor,
+                    "is_monitor": name.endswith(".monitor"),
+                    "is_bluetooth": "bluez_input" in name,
+                    "accepted": not name.endswith(".monitor"),
                 }
             )
         return sources
@@ -366,6 +217,7 @@ class VoicePipeline:
                 logger.warning("parecord beendet (%s): %s", source_name, err.strip())
 
     def _record_followup(self, source_name: str) -> Path | None:
+        logger.info("Aufnahme Folgekommando gestartet (source=%s)", source_name)
         tmp = NamedTemporaryFile(delete=False, suffix=".wav")
         tmp.close()
         wav_path = Path(tmp.name)
@@ -393,6 +245,7 @@ class VoicePipeline:
             wav_path.unlink(missing_ok=True)
             return None
 
+        logger.info("Aufnahme Folgekommando beendet (source=%s, bytes=%s)", source_name, wav_path.stat().st_size)
         return wav_path
 
     def _handle_wake_event(self, event: dict[str, Any]) -> None:
@@ -401,31 +254,38 @@ class VoicePipeline:
         if recording is None:
             return
 
-        transcript = None
         try:
-            transcript = self._transcriber.transcribe(recording)
+            transcript = self._transcriber.transcribe_file(str(recording))
         except Exception as exc:
-            logger.exception("Hailo-Whisper-Transkription schlug fehl: %s", exc)
+            logger.exception("Whisper-Transkription fehlgeschlagen: %s", exc)
+            recording.unlink(missing_ok=True)
+            return
         finally:
             recording.unlink(missing_ok=True)
 
-        if not transcript:
-            logger.error("Hailo-Whisper nicht nutzbar oder leeres Ergebnis (source=%s).", source_name)
+        routed = self._router.route(transcript)
+        logger.info("Normalisierter Befehl: %s", routed.normalized_text)
+        logger.info("Erkannter Intent / Routing-Ziel: %s", routed.target.value)
+
+        if routed.target == RouteTarget.SHELLY and routed.smart_home is not None:
+            try:
+                response = self._shelly.send(routed.smart_home)
+                if response.success:
+                    label = routed.smart_home.room or routed.smart_home.device or "Gerät"
+                    confirmation = f"{label} ausgeschaltet" if routed.smart_home.action == "off" else f"{label} eingeschaltet"
+                    logger.info("Smart-Home-Befehl erfolgreich: %s", response.message)
+                    self._tts.speak(confirmation)
+                else:
+                    logger.error("Smart-Home-Befehl fehlgeschlagen: %s", response.message)
+            except Exception as exc:
+                logger.exception("Shelly-Integration fehlgeschlagen: %s", exc)
             return
 
-        parsed = self._parser.parse(transcript, wake_word_detected=True)
-        payload = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "source_name": source_name,
-            **asdict(parsed),
-            "wake_score": float(event.get("score", 0.0)),
-        }
-
-        if parsed.intent == "unknown":
-            logger.warning("Parser konnte keinen Befehl ableiten: '%s'", transcript)
-
-        logger.info("Transkript: %s", transcript)
-        logger.info("Parsed JSON: %s", json.dumps(payload, ensure_ascii=False))
+        try:
+            llm_response = self._llm.chat(routed.normalized_text)
+            self._tts.speak(llm_response)
+        except Exception as exc:
+            logger.exception("LLM-Integration fehlgeschlagen: %s", exc)
 
 
 if __name__ == "__main__":

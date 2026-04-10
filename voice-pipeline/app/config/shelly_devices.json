@@ -1,0 +1,16 @@
+[
+  {
+    "id": "wohnzimmer_lampe1",
+    "room": "wohnzimmer",
+    "group": "wohnzimmer",
+    "aliases": [
+      "wohnzimmer",
+      "wohnzimmerlicht",
+      "lampe1",
+      "wohnzimmer lampe1",
+      "lampe im wohnzimmer"
+    ],
+    "base_url": "http://wohnzimmerlampe.arkham.asylum",
+    "command_path": "/script/1/light-control"
+  }
+]
