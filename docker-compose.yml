@@ -151,6 +151,7 @@ services:
         192.168.1.4 padawan.arkham.asylum
         192.168.1.5 batman.arkham.asylum
         192.168.1.101 nightmaresiddious.arkham.asylum
+        192.168.1.85 wohnzimmerlampe.arkham.asylum
 
     volumes:
       - ./pihole/etc-pihole:/etc/pihole
