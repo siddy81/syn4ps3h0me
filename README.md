@@ -144,7 +144,7 @@ VOICE_WHISPER_MODEL=openai/whisper-base
 VOICE_WHISPER_LANGUAGE=de
 VOICE_WHISPER_CACHE_DIR=/home/siddy/.cache/huggingface
 
-VOICE_LLM_BASE_URL=http://127.0.0.1:8000
+VOICE_LLM_BASE_URL=http://host.docker.internal:8000
 VOICE_LLM_MODEL=llama3.2:3b
 VOICE_LLM_TIMEOUT_SECONDS=45
 

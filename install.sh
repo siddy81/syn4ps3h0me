@@ -781,7 +781,7 @@ ensure_voice_env_defaults() {
     "VOICE_WHISPER_MODEL=openai/whisper-base"
     "VOICE_WHISPER_LANGUAGE=de"
     "VOICE_WHISPER_CACHE_DIR=/home/siddy/.cache/huggingface"
-    "VOICE_LLM_BASE_URL=http://127.0.0.1:8000"
+    "VOICE_LLM_BASE_URL=http://host.docker.internal:8000"
     "VOICE_LLM_MODEL=llama3.2:3b"
     "VOICE_LLM_TIMEOUT_SECONDS=45"
     "SHELLY_KITCHEN_LIGHT_BASE_URL="
@@ -805,6 +805,13 @@ ensure_voice_env_defaults() {
       log "Ergänze fehlende .env Vorgabe: ${key}"
     fi
   done
+
+  local current_llm_base
+  current_llm_base="$(read_env_key "VOICE_LLM_BASE_URL" "${ENV_FILE}")"
+  if [[ "${current_llm_base}" == "http://127.0.0.1:8000" || "${current_llm_base}" == "http://localhost:8000" ]]; then
+    upsert_env_key "VOICE_LLM_BASE_URL" "http://host.docker.internal:8000" "${ENV_FILE}"
+    log "Migriere VOICE_LLM_BASE_URL auf host.docker.internal für Container-Zugriff."
+  fi
 
   upsert_env_key "OPEN_WEBUI_DEFAULT_MODELS" "${ACTIVE_LLM_MODEL}" "${ENV_FILE}"
   upsert_env_key "OPEN_WEBUI_OLLAMA_BASE_URL" "http://127.0.0.1:8000" "${ENV_FILE}"
