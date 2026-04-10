@@ -205,6 +205,7 @@ services:
     volumes:
       - /run/user/${VOICE_HOST_UID:-1000}:/run/user/${VOICE_HOST_UID:-1000}
       - ${VOICE_HAILO_APPS_DIR:-/home/siddy/workspace/hailo-apps}:/home/siddy/workspace/hailo-apps:ro
+      - ${VOICE_WHISPER_CACHE_DIR:-/home/siddy/.cache/huggingface}:/models/huggingface
     environment:
       TZ: ${TZ:-Europe/Berlin}
       XDG_RUNTIME_DIR: /run/user/${VOICE_HOST_UID:-1000}
@@ -217,13 +218,18 @@ services:
       WAKEWORD_MODEL_PATH: ${VOICE_WAKEWORD_MODEL_PATH:-}
       POST_WAKE_RECORD_SECONDS: ${VOICE_POST_WAKE_RECORD_SECONDS:-6}
       AUDIO_DEVICE_REFRESH_SECONDS: ${VOICE_AUDIO_DEVICE_REFRESH_SECONDS:-30}
-      WHISPER_BACKEND: ${VOICE_WHISPER_BACKEND:-hailo_local_cmd}
-      WHISPER_MODEL: ${VOICE_WHISPER_MODEL:-tiny}
-      WHISPER_COMPUTE_TYPE: ${VOICE_WHISPER_COMPUTE_TYPE:-int8}
+      WHISPER_MODE: ${VOICE_WHISPER_MODE:-hf_local}
+      WHISPER_MODEL: ${VOICE_WHISPER_MODEL:-openai/whisper-base}
       WHISPER_LANGUAGE: ${VOICE_WHISPER_LANGUAGE:-de}
-      HAILO_VENV_PYTHON: ${VOICE_HAILO_VENV_PYTHON:-}
-      HAILO_WHISPER_CMD: ${VOICE_HAILO_WHISPER_CMD:-cd {hailo_apps_dir} && source setup_env.sh && {hailo_python} -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat --audio-file {audio_path} --language {language}}
-      HAILO_WHISPER_CMD_TIMEOUT: ${VOICE_HAILO_WHISPER_CMD_TIMEOUT:-120}
+      WHISPER_CACHE_DIR: /models/huggingface
+      HF_HOME: /models/huggingface
+      LLM_BASE_URL: ${VOICE_LLM_BASE_URL:-http://host.docker.internal:8000}
+      LLM_MODEL: ${VOICE_LLM_MODEL:-llama3.2:3b}
+      LLM_TIMEOUT_SECONDS: ${VOICE_LLM_TIMEOUT_SECONDS:-45}
+      SHELLY_KITCHEN_LIGHT_BASE_URL: ${SHELLY_KITCHEN_LIGHT_BASE_URL:-}
+      SHELLY_KITCHEN_LIGHT_COMMAND_PATH: ${SHELLY_KITCHEN_LIGHT_COMMAND_PATH:-/script/light-control}
+      SHELLY_TIMEOUT_SECONDS: ${SHELLY_TIMEOUT_SECONDS:-5}
+      TTS_SHELL_COMMAND: ${VOICE_TTS_SHELL_COMMAND:-}
     healthcheck:
       test: ["CMD-SHELL", "pactl list sources short >/dev/null 2>&1"]
       interval: 30s

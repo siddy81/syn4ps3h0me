@@ -131,23 +131,40 @@ Das Skript erledigt automatisiert folgende Schritte:
 - Prüfe Container mit `docker compose ps`.
 - Falls Gruppenrechte neu sind: einmal ab- und wieder anmelden.
 
-### Voice-Pipeline: Hailo-Whisper Interpreter konfigurieren
-Die Voice-Pipeline prüft beim Start, ob ein ausführbarer Hailo-Python-Interpreter vorhanden ist.
+### Voice-Pipeline: Wake-Word → Whisper → Router → LLM/Shelly
+Die Voice-Pipeline nutzt Wake-Word-Erkennung (Jarvis), transkribiert das Folgekommando lokal über `openai/whisper-base` und routet danach regelbasiert:
 
-- Optional explizit setzen: `VOICE_HAILO_VENV_PYTHON=/pfad/zum/venv/bin/python`
-- Wenn leer, wird automatisch in `VOICE_HAILO_APPS_DIR` gesucht (in dieser Reihenfolge):
-  1. `venv_hailo_apps/bin/python`
-  2. `.venv/bin/python`
-  3. `venv/bin/python`
-- Wenn dort nichts gefunden wird, wird `setup_env.sh` geladen und `python` daraus automatisch aufgelöst.
-- Fehlt weiterhin ein gültiger Interpreter, stoppt die Pipeline mit einer klaren Fehlermeldung inkl. Kandidaten + `setup_env`-Probe.
+- Smart-Home-Kommandos (z. B. „schalte das Licht in der Küche aus“) → Shelly REST
+- alle anderen Kommandos → lokales LLM `llama3.2:3b`
 
-Beispiel für `.env`:
+Empfohlene `.env`-Einträge:
 ```env
-VOICE_HAILO_APPS_DIR=/home/siddy/workspace/hailo-apps
-VOICE_HAILO_VENV_PYTHON=
-VOICE_HAILO_WHISPER_CMD=cd {hailo_apps_dir} && source setup_env.sh && {hailo_python} -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat --audio-file {audio_path} --language {language}
+VOICE_WHISPER_MODE=hf_local
+VOICE_WHISPER_MODEL=openai/whisper-base
+VOICE_WHISPER_LANGUAGE=de
+VOICE_WHISPER_CACHE_DIR=/home/siddy/.cache/huggingface
+
+VOICE_LLM_BASE_URL=http://127.0.0.1:8000
+VOICE_LLM_MODEL=llama3.2:3b
+VOICE_LLM_TIMEOUT_SECONDS=45
+
+SHELLY_KITCHEN_LIGHT_BASE_URL=http://<SHELLY-IP>
+SHELLY_KITCHEN_LIGHT_COMMAND_PATH=/script/light-control
+SHELLY_TIMEOUT_SECONDS=5
+
+VOICE_TTS_SHELL_COMMAND=
 ```
+
+### Shelly-Script bereitstellen
+Die passende Shelly-REST-Schnittstelle liegt in `shelly_script/shelly_1pm_kitchen_light_control.js`.
+
+Kurzablauf:
+1. Shelly Web UI öffnen → **Scripts**
+2. Neues Script anlegen, Inhalt aus Datei einfügen
+3. Script starten
+4. Testen mit: `http://<SHELLY-IP>/script/light-control?action=off`
+
+Antwort ist JSON mit `ok=true|false` und `message`, was von der Python-Pipeline ausgewertet wird.
 
 ## 1. Architekturüberblick
 
