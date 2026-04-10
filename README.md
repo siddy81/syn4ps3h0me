@@ -23,7 +23,26 @@ Zusätzlich werden aktuell erste Komponenten für zukünftige KI-/Sprachfunktion
 - **Whisper-Ressourcen**
 - **hailo-ollama**
 
-Damit entsteht eine lokale, selbst gehostete Basis für Monitoring, MQTT-Kommunikation, DNS, HTTPS-Zugriffe und perspektivisch auch für KI-gestützte Erweiterungen.
+Damit entsteht eine lokale, selbst gehostete Basis für Monitoring, MQTT-Kommunikation, DNS, HTTPS-Zugriffe und KI-gestützte Erweiterungen.
+
+Neu umgesetzt ist außerdem eine **Voice-Pipeline** für die lokale Sprachsteuerung:
+
+- Das System wartet auf ein **frei konfigurierbares Wake-Word/Keyword**.
+- Nach dem Wake-Word kannst du direkt mit der **lokalen KI** sprechen; die Antwort wird über die **aktuellen Lautsprecher** ausgegeben.
+- Für Smart-Home-Befehle wie „**Schalte das Wohnzimmerlicht an/aus**“ wird der konfigurierte **Shelly** angesprochen.
+- Voraussetzung für die Shelly-Steuerung ist, dass auf dem Zielgerät das Script **`shelly_1pm_control.js`** läuft.
+
+- Die Zuordnung der Shelly-Geräte (z. B. `wohnzimmerlicht`) erfolgt über **`voice-pipeline/app/config/shelly_devices.json`**.
+  Beispiel-Eintrag:
+  ```json
+  {
+    "id": "wohnzimmer_licht",
+    "room": "wohnzimmer",
+    "aliases": ["wohnzimmer", "wohnzimmerlicht"],
+    "base_url": "http://wohnzimmer-licht.arkham.asylum",
+    "command_path": "/script/light-control"
+  }
+  ```
 
 ## Open WebUI: RAG mit lokalem Wissensordner
 
@@ -69,9 +88,19 @@ Als Amazon-Partner verdiene ich an qualifizierten Verkäufen.
 
 ## Installation auf dem Raspberry Pi (mit `install.sh`)
 
-### Zentrales Admin-Passwort
-Das Admin-Passwort für **InfluxDB**, **Grafana** und **Pi-hole** wird zentral über `STACK_ADMIN_PASSWORD` in der .env-Datei gesteuert.
-Default ist es auf admin123 gesetzt. Unbedingt vor der Inbetriebnahme ändern!
+### Passwörter / Secrets (`.env`)
+Die Installation arbeitet mit **service-spezifischen Secrets** in der `.env` (kein gemeinsames Pflicht-Passwort für alle Dienste).
+Bitte vor Produktivbetrieb setzen/ändern:
+
+- `MQTT_PASSWORD`
+- `INFLUXDB_PASSWORD`
+- `INFLUXDB_WRITE_TOKEN`
+- `GRAFANA_ADMIN_PASSWORD`
+- `PIHOLE_API_PASSWORD`
+- `PIHOLE_ADMIN_PASSWORD`
+- `OPEN_WEBUI_ADMIN_PASSWORD`
+
+Hinweis: Ältere README-/Setup-Stände erwähnen teils `STACK_ADMIN_PASSWORD`. Maßgeblich für den aktuellen Compose-Stack sind die oben genannten Einzelvariablen.
 
 
 ### Vorbedingungen
@@ -139,20 +168,39 @@ Die Voice-Pipeline nutzt Wake-Word-Erkennung (Jarvis), transkribiert das Folgeko
 
 Empfohlene `.env`-Einträge:
 ```env
+# Container User/Audio Runtime
+VOICE_HOST_UID=1000
+VOICE_HOST_GID=1000
+
+# Wake-Word
+VOICE_WAKEWORD_MODEL=jarvis
+VOICE_WAKEWORD_MODEL_PATH=
+VOICE_WAKE_WORD_THRESHOLD=0.5
+VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0
+VOICE_POST_WAKE_RECORD_SECONDS=6
+
+# Audio/Devices
+VOICE_AUDIO_SAMPLE_RATE=16000
+VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30
+
+# Whisper (lokal)
 VOICE_WHISPER_MODE=hf_local
 VOICE_WHISPER_MODEL=openai/whisper-base
 VOICE_WHISPER_LANGUAGE=de
 VOICE_WHISPER_CACHE_DIR=/home/siddy/.cache/huggingface
 
+# LLM
 VOICE_LLM_BASE_URL=http://host.docker.internal:8000
 VOICE_LLM_MODEL=llama3.2:3b
 VOICE_LLM_TIMEOUT_SECONDS=45
 
+# Shelly-Routing
 SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json
 SHELLY_DEVICE_MAP_JSON=
 SHELLY_DEFAULT_COMMAND_PATH=/script/light-control
 SHELLY_TIMEOUT_SECONDS=5
 
+# TTS
 VOICE_TTS_SHELL_COMMAND=
 VOICE_TTS_AUTO_ENABLED=true
 VOICE_TTS_LANGUAGE=de
@@ -161,7 +209,26 @@ VOICE_TTS_LANGUAGE=de
 ### Shelly-Script bereitstellen
 
 Für das Routing auf mehrere Shellys wird eine Lookup-Tabelle verwendet (Raum/Alternative Bezeichnungen/Gruppe → DNS/IP).
-Beispiel: `voice-pipeline/app/config/shelly_devices.example.json`.
+Beispieldatei: `voice-pipeline/app/config/shelly_devices.example.json`.
+
+> Wichtig: Im Container ist die **Beispieldatei** read-only gemountet. Für produktive Zuordnungen eine eigene `voice-pipeline/app/config/shelly_devices.json` anlegen.
+
+```bash
+cp voice-pipeline/app/config/shelly_devices.example.json \
+   voice-pipeline/app/config/shelly_devices.json
+```
+
+Beispiel für einen echten Mapping-Eintrag:
+```json
+{
+  "id": "wohnzimmer_licht",
+  "room": "wohnzimmer",
+  "group": "wohnzimmer",
+  "aliases": ["wohnzimmer", "wohnzimmer licht", "wohnzimmerlampe"],
+  "base_url": "http://wohnzimmer-licht.arkham.asylum",
+  "command_path": "/script/light-control"
+}
+```
 
 Das wiederverwendbare Shelly-Script liegt in `shelly_script/shelly_1pm_control.js`.
 
@@ -169,10 +236,12 @@ Kurzablauf:
 1. Shelly Web UI öffnen → **Scripts**
 2. Neues Script anlegen, Inhalt aus Datei einfügen (gleiches Script auf jedem Ziel-Shelly)
 3. Script starten
-4. Für jeden Shelly einen eindeutigen DNS-/IP-Eintrag in die Lookup-Tabelle setzen
+4. Für jeden Shelly einen eindeutigen DNS-/IP-Eintrag in `shelly_devices.json` setzen
 5. Testen mit: `http://<SHELLY-IP>/script/light-control?action=off`
 
 Antwort ist JSON mit `ok=true|false` und `message`, was von der Python-Pipeline ausgewertet wird.
+
+Optional: Für BLU-Sensoren (Motion / Door-Window) gibt es ein separates Gateway-Script inkl. Anleitung unter `shelly_script/README.md` und `shelly_script/blu-flow-detector-v1.js`.
 
 Ohne `VOICE_TTS_SHELL_COMMAND` nutzt die Pipeline automatisch `espeak-ng` + `paplay` und versucht die Ausgabe auf **allen erkannten Pulse-Sinks** abzuspielen.
 
@@ -259,20 +328,19 @@ docker compose up -d --force-recreate pihole
 cp .env .env.local  # optional backup before editing
 ```
 
-### Zentrales Admin-Passwort
-Das Admin-Passwort für **InfluxDB**, **Grafana** und **Pi-hole** wird zentral über `STACK_ADMIN_PASSWORD` gesteuert.
-Default ist es auf admin123 gesetzt. Unbedingt vor der Inbetriebnahme ändern! 
+### Secrets in `.env`
+Bitte die produktiv genutzten Secret-Variablen setzen (Beispiele):
+- `MQTT_PASSWORD=...`
+- `INFLUXDB_PASSWORD=...`
+- `INFLUXDB_WRITE_TOKEN=...`
+- `GRAFANA_ADMIN_PASSWORD=...`
+- `PIHOLE_API_PASSWORD=...`
+- `PIHOLE_ADMIN_PASSWORD=...`
+- `OPEN_WEBUI_ADMIN_PASSWORD=...`
 
-Optional kannst du einzelne Services weiterhin separat überschreiben:
-- `INFLUXDB_PASSWORD`
-- `GF_ADMIN_PASSWORD`
-- `PIHOLE_WEBPASSWORD`
-
-
-Standardwerte stehen direkt in `.env` (produktiv genutzt):
+Weitere Basiswerte in `.env` (produktiv genutzt):
 - `INTRANET_DOMAIN=arkham.asylum`
 - `TZ=Europe/Berlin`
-- `STACK_ADMIN_PASSWORD=admin123`
 
 ### Start / Stop
 ```bash
@@ -324,7 +392,7 @@ Wichtig: Diese direkten Ports sprechen **HTTP**, nicht HTTPS.
 ### Erster Login Pi-hole
 1. Pi-hole öffnen: `https://pihole.arkham.asylum/admin/` (bereitgestellt über Caddy Reverse Proxy).
    Alternativ (Legacy-Host): `https://nightmaresiddious.arkham.asylum/admin/`.
-2. Mit dem zentralen Passwort `STACK_ADMIN_PASSWORD` aus der produktiven `.env` anmelden (optional pro Service mit eigenen Variablen überschreibbar).
+2. Mit dem in `.env` gesetzten `PIHOLE_ADMIN_PASSWORD` anmelden.
 3. Optionales Theme wird über `PIHOLE_WEBTHEME` gesteuert (Default: `default-darker` = „Pi-hole Midnight“).
 4. DNS-Upstream-Resolver werden über `PIHOLE_DNS_UPSTREAMS` gesetzt (Default: `1.1.1.1;1.0.0.1;1.1.1.1;9.9.9.9`).
 5. Unter *Local DNS* prüfen, ob die Einträge aus `custom.list` aktiv sind.
@@ -362,7 +430,8 @@ Hinweis: Das Vorgehen entspricht der empfohlenen Pi-hole-Rolle als zentraler DNS
 
 ### Pi-hole Docker-Konfiguration (laut offizieller Docker-Variablen)
 Die Pi-hole-Konfiguration nutzt primär `FTLCONF_*` Variablen:
-- Passwort: `FTLCONF_webserver_api_password` (aus `.env`: `STACK_ADMIN_PASSWORD`, optional via `PIHOLE_WEBPASSWORD` überschreibbar)
+- API-Passwort: `FTLCONF_webserver_api_password` (aus `.env`: `PIHOLE_API_PASSWORD`)
+- WebUI-Passwort (Legacy-Alias): `WEBPASSWORD` (aus `.env`: `PIHOLE_ADMIN_PASSWORD`)
 - Theme: `FTLCONF_webserver_interface_theme` (aus `.env`: `PIHOLE_WEBTHEME`)
 - DNS-Upstream: `FTLCONF_dns_upstreams` (aus `.env`: `PIHOLE_DNS_UPSTREAMS`)
 - DNSSEC: `FTLCONF_dns_dnssec` (aus `.env`: `PIHOLE_DNSSEC=true`)
@@ -375,7 +444,7 @@ docker compose up -d --force-recreate pihole
 
 Hinweis: Bei bestehendem persistenten Volume kann ein altes Passwort aktiv bleiben. Dann explizit setzen:
 ```bash
-docker compose exec pihole pihole setpassword "$STACK_ADMIN_PASSWORD"
+docker compose exec pihole pihole setpassword "$PIHOLE_ADMIN_PASSWORD"
 ```
 
 ### Blocklisten für Werbung und gefährliche Domains
@@ -438,7 +507,32 @@ curl -I https://grafana.arkham.asylum
 curl -I https://pihole.arkham.asylum/admin/
 ```
 
-## 6. Troubleshooting
+## 6. Deinstallation / Rollback
+
+Für die modulare Entfernung gibt es `uninstall.sh`.
+Das Script kann einzeln entfernen:
+
+- Smart Home (mosquitto, influxdb, telegraf, grafana)
+- Pi-hole
+- Caddy
+- Voice Pipeline
+- LLM-Chat (open-webui, hailo-ollama)
+- optional „Alles deinstallieren (inkl. Docker)"
+
+Aufruf:
+```bash
+cd ~/workspace/syn4ps3h0me
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+Danach (optional) prüfen:
+```bash
+docker compose ps
+systemctl status hailo-ollama
+```
+
+## 7. Troubleshooting
 
 ### Pi-hole Theme auf "Pi-hole Midnight" setzen
 Ja. Das Theme kann zentral per Env-Variable gesetzt werden und erscheint dann in den Web Interface/API Settings:
