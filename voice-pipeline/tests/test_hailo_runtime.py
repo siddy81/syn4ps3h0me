@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.hailo_runtime import HailoRuntimeConfig, resolve_hailo_runtime_from_env, validate_hailo_runtime
+from app.hailo_runtime import HailoRuntimeConfig, _extract_executable_from_probe_output, resolve_hailo_runtime_from_env, validate_hailo_runtime
 
 
 class HailoRuntimeResolutionTests(unittest.TestCase):
@@ -58,6 +58,13 @@ class HailoRuntimeResolutionTests(unittest.TestCase):
 
             self.assertTrue(runtime.hailo_python.exists())
             self.assertTrue(os.access(runtime.hailo_python, os.X_OK))
+
+
+    def test_extract_executable_from_noisy_setup_output(self) -> None:
+        output = f"""Setting up the environment...\nChecking kernel version...\n{sys.executable}\n"""
+        resolved = _extract_executable_from_probe_output(output)
+        self.assertIsNotNone(resolved)
+        self.assertTrue(resolved.is_absolute())
 
     def test_resolve_fails_with_all_checked_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -45,6 +45,15 @@ def _is_executable_file(path: Path) -> bool:
     return path.exists() and path.is_file() and os.access(path, os.X_OK)
 
 
+def _extract_executable_from_probe_output(output: str) -> Path | None:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    for line in reversed(lines):
+        candidate = Path(line).expanduser()
+        if _is_executable_file(candidate):
+            return candidate
+    return None
+
+
 def _detect_python_via_setup_env(apps_dir: Path, setup_env_file: Path) -> tuple[Path | None, str]:
     if not setup_env_file.exists():
         return None, "setup_env.sh fehlt"
@@ -55,13 +64,13 @@ def _detect_python_via_setup_env(apps_dir: Path, setup_env_file: Path) -> tuple[
         "python -c \"import sys; print(sys.executable)\""
     )
     result = subprocess.run(["bash", "-lc", cmd], capture_output=True, text=True, check=False)
-    output = (result.stdout or result.stderr or "").strip()
+    output = "\n".join(part for part in [result.stdout, result.stderr] if part).strip()
     if result.returncode != 0:
         return None, f"setup_env probe rc={result.returncode} output={output}"
 
-    resolved = Path(output).expanduser()
-    if not _is_executable_file(resolved):
-        return None, f"setup_env lieferte ungültigen Interpreter: {resolved}"
+    resolved = _extract_executable_from_probe_output(output)
+    if resolved is None:
+        return None, f"setup_env lieferte keinen ausführbaren Interpreter. output={output}"
 
     return resolved, f"setup_env probe ok: {resolved}"
 
