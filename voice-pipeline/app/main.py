@@ -269,9 +269,10 @@ class VoicePipeline:
 
         if routed.target == RouteTarget.SHELLY and routed.smart_home is not None:
             try:
-                response = self._shelly.send_kitchen_light(routed.smart_home.action)
+                response = self._shelly.send(routed.smart_home)
                 if response.success:
-                    confirmation = "Küchenlicht ausgeschaltet" if routed.smart_home.action == "off" else "Küchenlicht eingeschaltet"
+                    label = routed.smart_home.room or routed.smart_home.device or "Gerät"
+                    confirmation = f"{label} ausgeschaltet" if routed.smart_home.action == "off" else f"{label} eingeschaltet"
                     logger.info("Smart-Home-Befehl erfolgreich: %s", response.message)
                     self._tts.speak(confirmation)
                 else:

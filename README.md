@@ -148,21 +148,27 @@ VOICE_LLM_BASE_URL=http://host.docker.internal:8000
 VOICE_LLM_MODEL=llama3.2:3b
 VOICE_LLM_TIMEOUT_SECONDS=45
 
-SHELLY_KITCHEN_LIGHT_BASE_URL=http://<SHELLY-IP>
-SHELLY_KITCHEN_LIGHT_COMMAND_PATH=/script/light-control
+SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json
+SHELLY_DEVICE_MAP_JSON=
+SHELLY_DEFAULT_COMMAND_PATH=/script/light-control
 SHELLY_TIMEOUT_SECONDS=5
 
 VOICE_TTS_SHELL_COMMAND=
 ```
 
 ### Shelly-Script bereitstellen
-Die passende Shelly-REST-Schnittstelle liegt in `shelly_script/shelly_1pm_kitchen_light_control.js`.
+
+Für das Routing auf mehrere Shellys wird eine Lookup-Tabelle verwendet (Raum/Alternative Bezeichnungen/Gruppe → DNS/IP).
+Beispiel: `voice-pipeline/app/config/shelly_devices.example.json`.
+
+Das wiederverwendbare Shelly-Script liegt in `shelly_script/shelly_1pm_light_control.js`.
 
 Kurzablauf:
 1. Shelly Web UI öffnen → **Scripts**
-2. Neues Script anlegen, Inhalt aus Datei einfügen
+2. Neues Script anlegen, Inhalt aus Datei einfügen (gleiches Script auf jedem Ziel-Shelly)
 3. Script starten
-4. Testen mit: `http://<SHELLY-IP>/script/light-control?action=off`
+4. Für jeden Shelly einen eindeutigen DNS-/IP-Eintrag in die Lookup-Tabelle setzen
+5. Testen mit: `http://<SHELLY-IP>/script/light-control?action=off`
 
 Antwort ist JSON mit `ok=true|false` und `message`, was von der Python-Pipeline ausgewertet wird.
 

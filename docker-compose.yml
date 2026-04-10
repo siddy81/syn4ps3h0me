@@ -206,6 +206,7 @@ services:
       - /run/user/${VOICE_HOST_UID:-1000}:/run/user/${VOICE_HOST_UID:-1000}
       - ${VOICE_HAILO_APPS_DIR:-/home/siddy/workspace/hailo-apps}:/home/siddy/workspace/hailo-apps:ro
       - ${VOICE_WHISPER_CACHE_DIR:-/home/siddy/.cache/huggingface}:/models/huggingface
+      - ./voice-pipeline/app/config/shelly_devices.example.json:/app/app/config/shelly_devices.example.json:ro
     environment:
       TZ: ${TZ:-Europe/Berlin}
       XDG_RUNTIME_DIR: /run/user/${VOICE_HOST_UID:-1000}
@@ -226,8 +227,9 @@ services:
       LLM_BASE_URL: ${VOICE_LLM_BASE_URL:-http://host.docker.internal:8000}
       LLM_MODEL: ${VOICE_LLM_MODEL:-llama3.2:3b}
       LLM_TIMEOUT_SECONDS: ${VOICE_LLM_TIMEOUT_SECONDS:-45}
-      SHELLY_KITCHEN_LIGHT_BASE_URL: ${SHELLY_KITCHEN_LIGHT_BASE_URL:-}
-      SHELLY_KITCHEN_LIGHT_COMMAND_PATH: ${SHELLY_KITCHEN_LIGHT_COMMAND_PATH:-/script/light-control}
+      SHELLY_DEVICE_MAP_FILE: ${SHELLY_DEVICE_MAP_FILE:-/app/app/config/shelly_devices.json}
+      SHELLY_DEVICE_MAP_JSON: ${SHELLY_DEVICE_MAP_JSON:-}
+      SHELLY_DEFAULT_COMMAND_PATH: ${SHELLY_DEFAULT_COMMAND_PATH:-/script/light-control}
       SHELLY_TIMEOUT_SECONDS: ${SHELLY_TIMEOUT_SECONDS:-5}
       TTS_SHELL_COMMAND: ${VOICE_TTS_SHELL_COMMAND:-}
     healthcheck:

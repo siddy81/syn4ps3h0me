@@ -1,5 +1,5 @@
 /*
- * Shelly 1PM script: kitchen light HTTP control endpoint
+ * Generic Shelly 1PM script for reusable light-control endpoint.
  * Endpoint: GET /script/light-control?action=on|off
  */
 
@@ -27,10 +27,9 @@ HTTPServer.registerEndpoint(ENDPOINT_PATH, function (request, response) {
     return;
   }
 
-  let turnOn = action === "on";
   Shelly.call(
     "Switch.Set",
-    { id: RELAY_ID, on: turnOn },
+    { id: RELAY_ID, on: action === "on" },
     function (result, errCode, errMsg) {
       if (errCode !== 0) {
         sendJson(response, 500, {
@@ -47,10 +46,10 @@ HTTPServer.registerEndpoint(ENDPOINT_PATH, function (request, response) {
         action: action,
         relay_id: RELAY_ID,
         ison: result && result.output,
-        message: turnOn ? "kitchen light turned on" : "kitchen light turned off",
+        message: action === "on" ? "light turned on" : "light turned off",
       });
     }
   );
 });
 
-print("Shelly kitchen-light endpoint active at " + ENDPOINT_PATH);
+print("Shelly generic light endpoint active at " + ENDPOINT_PATH);

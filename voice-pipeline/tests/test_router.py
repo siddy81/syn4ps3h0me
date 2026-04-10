@@ -15,7 +15,8 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(routed.target, RouteTarget.SHELLY)
         assert routed.smart_home is not None
         self.assertEqual(routed.smart_home.action, "off")
-        self.assertEqual(routed.smart_home.room, "küche")
+        self.assertEqual(routed.smart_home.room, "kueche")
+        self.assertEqual(routed.smart_home.device, "licht")
 
     def test_routes_general_prompt_to_llm(self) -> None:
         routed = self.router.route("Jarvis, erklär mir Quantenphysik")
