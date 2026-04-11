@@ -69,14 +69,19 @@ Zentrale Eigenschaften:
 
 4.2 Erwartetes Verhalten gemäß Open WebUI RAG-Konzept
 - Dateien im knowledge-import-Ordner sind als Importquelle verfügbar.
-- Für Knowledge-Bases erfolgt die tatsächliche Indexierung/Einbindung innerhalb Open WebUI (Workspace > Knowledge).
+- Ein Auto-Sync-Service übernimmt Upload + Verarbeitung + Zuordnung zur konfigurierten Knowledge Base über die Open-WebUI-API.
 - Danach kann Wissen im Chat per Knowledge-Auswahl oder Referenz genutzt werden.
 
 4.3 "Out of the box" Betriebsziel
-- Nach Start des Compose-Stacks ist der Ordner sofort im Container vorhanden und kann ohne zusätzliche Host-Mounts verwendet werden.
+- Nach Start des Compose-Stacks sind Wissensdateien sofort im Container vorhanden und werden automatisch in Open WebUI synchronisiert.
 - Für RAG-Qualität sind Chunking/Embedding-Einstellungen in Open WebUI Admin Settings (Documents) relevant.
 
-4.4 RAG-Qualitätsempfehlungen
+4.4 Auto-Sync (technisch)
+- Service: open-webui-knowledge-sync
+- Läuft zyklisch (Default 120s) und erkennt Änderungen per Datei-Hash
+- Unterstützt: txt, md, pdf, docx, doc, rtf, csv, json
+
+4.5 RAG-Qualitätsempfehlungen
 - Strukturierte .txt/.md Dokumente mit klaren Überschriften verwenden
 - Thematisch getrennte Dateien statt einer riesigen Monolith-Datei
 - Bei großen Dokumenten auf Chunk Size, Chunk Overlap und Chunk Min Size Target achten

@@ -6,21 +6,33 @@ Dieser Ordner ist die **Host-Quelle** für RAG-Wissensdokumente im Projekt `syn4
 
 Der Ordner wird über `docker-compose.yml` nach:
 
-- `/app/backend/data/knowledge-import`
+- `/app/backend/data/knowledge-import` (für Open WebUI)
+- `/knowledge-import` (für den Auto-Sync-Service)
 
-in den `open-webui`-Container gemountet (read-only).
+gemountet.
 
-Damit stehen die Dateien **direkt nach Stack-Start** im Container als Importquelle bereit.
+## Automatisches Einlesen (RAG, out of the box)
 
-## Nutzung in Open WebUI (RAG)
+Zusätzlich läuft der Service `open-webui-knowledge-sync`, der Dateien aus diesem Ordner automatisch per Open-WebUI-API in eine Knowledge Base synchronisiert.
 
-Gemäß Open-WebUI-RAG-Workflow:
+Standardziel:
+- Knowledge Base Name: `syn4ps3h0me`
 
-1. Dateien hier ablegen (`.txt`, `.md`, `.pdf`, `.docx`, ...)
-2. `docker compose up -d` starten/aktualisieren
-3. In Open WebUI: `Workspace -> Knowledge`
-4. Dateien aus dem Importbereich in eine Knowledge Base übernehmen/indexieren
-5. Knowledge im Chat auswählen, damit Retrieval aktiv ist
+Damit ist das Wissen nach Stack-Start ohne manuelle UI-Importschritte in Open WebUI als Knowledge verfügbar.
+
+## Unterstützte Dateitypen (Standard)
+
+`txt, md, pdf, docx, doc, rtf, csv, json`
+
+(änderbar über `KNOWLEDGE_SYNC_EXTENSIONS` in der `.env`)
+
+## Wichtige ENV-Variablen
+
+- `OPEN_WEBUI_BASE_URL` (Default: `http://127.0.0.1:8080`)
+- `OPEN_WEBUI_ADMIN_EMAIL`
+- `OPEN_WEBUI_ADMIN_PASSWORD`
+- `OPEN_WEBUI_KNOWLEDGE_NAME` (Default: `syn4ps3h0me`)
+- `KNOWLEDGE_SYNC_INTERVAL_SECONDS` (Default: `120`)
 
 ## Hinweis zur Wartung
 
