@@ -46,7 +46,16 @@ Der Sync verarbeitet die komplette Ordnerstruktur rekursiv (z. B. `rezepte/famil
 - `OPEN_WEBUI_ADMIN_PASSWORD`
 - `OPEN_WEBUI_ROOT_KNOWLEDGE_NAME` (Default: `syn4ps3h0me`) – Kategorie für Root-Dateien
 - `OPEN_WEBUI_KNOWLEDGE_PREFIX` (Default: leer) – optionales Prefix für Ordner-Kategorien
+- `OPEN_WEBUI_WORKSPACE_MODEL_ENABLED` (Default: `true`) – versucht automatisch ein Workspace-Modell anzulegen
+- `OPEN_WEBUI_WORKSPACE_MODEL_ID` (Default: `llama3.2-3b-workspace`)
+- `OPEN_WEBUI_WORKSPACE_MODEL_NAME` (Default: `Llama 3.2 3B (Workspace)`)
+- `OPEN_WEBUI_WORKSPACE_MODEL_BASE_ID` (Default: `llama3.2:3b`)
 - `KNOWLEDGE_SYNC_INTERVAL_SECONDS` (Default: `120`)
+
+## Workspace-Modell Auto-Setup
+
+Der Sync-Service versucht beim Lauf automatisch ein Workspace-Modell für `llama3.2:3b` anzulegen (wenn `OPEN_WEBUI_WORKSPACE_MODEL_ENABLED=true`).
+So erscheint das Modell auch unter `Workspace -> Models`, statt nur im normalen Modell-Selector.
 
 ## Hinweis zur Wartung
 

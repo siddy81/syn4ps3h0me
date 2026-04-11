@@ -115,6 +115,20 @@ class WebUIClient:
                 continue
         raise RuntimeError("Unable to list knowledge bases")
 
+    def list_models(self) -> list[dict[str, Any]]:
+        for path in ("/api/v1/models", "/api/models"):
+            try:
+                response = self._request("GET", path)
+                data = response.json()
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict) and isinstance(data.get("data"), list):
+                    return data["data"]
+                return []
+            except Exception:
+                continue
+        raise RuntimeError("Unable to list models")
+
     def get_knowledge(self, knowledge_id: str) -> dict[str, Any] | None:
         for path in (f"/api/v1/knowledge/{knowledge_id}", f"/api/v1/knowledge/id/{knowledge_id}"):
             try:
@@ -213,6 +227,60 @@ class WebUIClient:
                 continue
         print(f"[sync] WARN: Could not delete file {file_id}")
 
+    def ensure_workspace_model(self, *, workspace_model_id: str, workspace_model_name: str, base_model_id: str) -> None:
+        try:
+            models = self.list_models()
+        except Exception as exc:
+            print(f"[sync] WARN: Could not list models for workspace model sync: {exc}")
+            return
+
+        for model in models:
+            if str(model.get("id", "")).strip() == workspace_model_id:
+                return
+
+        payload_candidates = [
+            {
+                "id": workspace_model_id,
+                "name": workspace_model_name,
+                "base_model_id": base_model_id,
+            },
+            {
+                "id": workspace_model_id,
+                "name": workspace_model_name,
+                "base_model_id": base_model_id,
+                "meta": {},
+                "params": {},
+            },
+            {
+                "id": workspace_model_id,
+                "name": workspace_model_name,
+                "model": base_model_id,
+                "base_model_id": base_model_id,
+                "meta": {},
+                "params": {},
+            },
+        ]
+
+        for path in ("/api/v1/models/create", "/api/v1/models/add"):
+            for payload in payload_candidates:
+                try:
+                    self._request(
+                        "POST",
+                        path,
+                        json=payload,
+                        headers={"Content-Type": "application/json"},
+                        expected=(200, 201),
+                    )
+                    print(f"[sync] Created workspace model '{workspace_model_name}' ({workspace_model_id})")
+                    return
+                except Exception:
+                    continue
+
+        print(
+            "[sync] WARN: Could not auto-create workspace model. "
+            "Please create it once manually in Workspace -> Models."
+        )
+
 
 def load_state(path: pathlib.Path) -> dict[str, Any]:
     if not path.exists():
@@ -249,6 +317,10 @@ def sync_once() -> None:
     password = env("OPEN_WEBUI_ADMIN_PASSWORD")
     root_knowledge_name = env("OPEN_WEBUI_ROOT_KNOWLEDGE_NAME", "syn4ps3h0me")
     knowledge_prefix = env("OPEN_WEBUI_KNOWLEDGE_PREFIX", "")
+    workspace_model_enabled = os.getenv("OPEN_WEBUI_WORKSPACE_MODEL_ENABLED", "true").lower() in {"1", "true", "yes"}
+    workspace_model_id = env("OPEN_WEBUI_WORKSPACE_MODEL_ID", "llama3.2-3b-workspace")
+    workspace_model_name = env("OPEN_WEBUI_WORKSPACE_MODEL_NAME", "Llama 3.2 3B (Workspace)")
+    workspace_model_base_id = env("OPEN_WEBUI_WORKSPACE_MODEL_BASE_ID", "llama3.2:3b")
     knowledge_desc = env(
         "OPEN_WEBUI_KNOWLEDGE_DESCRIPTION",
         "Automatisch synchronisierte Projekt-Dokumentation aus /knowledge-import",
@@ -261,6 +333,14 @@ def sync_once() -> None:
         raise RuntimeError(f"Knowledge import directory not found: {knowledge_dir}")
 
     client = WebUIClient(base_url=base_url, email=email, password=password)
+
+    if workspace_model_enabled:
+        client.ensure_workspace_model(
+            workspace_model_id=workspace_model_id,
+            workspace_model_name=workspace_model_name,
+            base_model_id=workspace_model_base_id,
+        )
+
     state = load_state(state_path)
     categories_state: dict[str, Any] = state.setdefault("categories", {})
 
