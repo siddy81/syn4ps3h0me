@@ -152,7 +152,7 @@ class WebUIClient:
         file_id = body.get("id")
         if not file_id:
             raise RuntimeError(f"Upload succeeded but no file id returned for {path}: {body}")
-        print(f"[sync] Uploaded {path.name} -> file id {file_id}")
+        print(f"[sync] Uploaded {path} -> file id {file_id}")
         return str(file_id)
 
     def wait_for_processing(self, file_id: str, timeout_seconds: int = 300) -> None:
@@ -194,10 +194,10 @@ def save_state(path: pathlib.Path, state: dict[str, Any]) -> None:
 
 def iter_knowledge_files(knowledge_dir: pathlib.Path, allowed_extensions: set[str]) -> list[pathlib.Path]:
     files = []
-    for file_path in sorted(knowledge_dir.iterdir()):
+    for file_path in sorted(knowledge_dir.rglob("*")):
         if not file_path.is_file():
             continue
-        if file_path.name.startswith("."):
+        if any(part.startswith(".") for part in file_path.parts):
             continue
         if file_path.suffix.lower() not in allowed_extensions:
             continue
@@ -231,7 +231,7 @@ def sync_once() -> None:
     skipped = 0
 
     for file_path in iter_knowledge_files(knowledge_dir, allowed_extensions):
-        rel_name = file_path.name
+        rel_name = str(file_path.relative_to(knowledge_dir))
         checksum = file_sha256(file_path)
         previous = state_files.get(rel_name)
 

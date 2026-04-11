@@ -13,12 +13,17 @@ gemountet.
 
 ## Automatisches Einlesen (RAG, out of the box)
 
-Zusätzlich läuft der Service `open-webui-knowledge-sync`, der Dateien aus diesem Ordner automatisch per Open-WebUI-API in eine Knowledge Base synchronisiert.
+Zusätzlich läuft der Service `open-webui-knowledge-sync`, der Dateien und Unterordner **rekursiv** aus diesem Ordner automatisch per Open-WebUI-API in eine Knowledge Base synchronisiert.
 
 Standardziel:
 - Knowledge Base Name: `syn4ps3h0me`
 
 Damit ist das Wissen nach Stack-Start ohne manuelle UI-Importschritte in Open WebUI als Knowledge verfügbar.
+
+## Unterordner / rekursive Struktur
+
+Der Sync verarbeitet die komplette Ordnerstruktur rekursiv (z. B. `rezepte/familie/*.md`, `buecher/wissen/**/*.pdf`).
+Dateien werden über ihren relativen Pfad getrackt, damit gleichnamige Dateien in unterschiedlichen Unterordnern korrekt behandelt werden.
 
 ## Unterstützte Dateitypen (Standard)
 

@@ -79,6 +79,8 @@ Zentrale Eigenschaften:
 4.4 Auto-Sync (technisch)
 - Service: open-webui-knowledge-sync
 - Läuft zyklisch (Default 120s) und erkennt Änderungen per Datei-Hash
+- Liest Ordner rekursiv ein (auch tiefe Unterordnerstrukturen)
+- Verfolgt Dateien über ihren relativen Pfad, damit gleichnamige Dateien in verschiedenen Unterordnern sauber getrennt bleiben
 - Unterstützt: txt, md, pdf, docx, doc, rtf, csv, json
 
 4.5 RAG-Qualitätsempfehlungen
