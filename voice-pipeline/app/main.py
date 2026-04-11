@@ -47,6 +47,7 @@ class VoicePipeline:
         self._wake_events: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=20)
         self._model: Model | None = None
         self._active_threads: dict[str, threading.Thread] = {}
+        self._ready_announced = False
 
         self._transcriber = create_transcriber()
         self._router = CommandRouter()
@@ -167,6 +168,10 @@ class VoicePipeline:
                 if stale not in known:
                     logger.warning("Source nicht mehr vorhanden: %s", stale)
                     self._active_threads.pop(stale, None)
+
+            if not self._ready_announced:
+                self._tts.announce_ready()
+                self._ready_announced = True
 
             try:
                 event = self._wake_events.get(timeout=self.device_refresh_seconds)
@@ -316,6 +321,7 @@ class VoicePipeline:
 
     def _handle_wake_event(self, event: dict[str, Any]) -> None:
         source_name = str(event["source_name"])
+        self._tts.beep()
         recording = self._record_followup(source_name)
         if recording is None:
             return

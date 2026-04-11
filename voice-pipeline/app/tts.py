@@ -1,6 +1,9 @@
 import logging
+import math
 import os
+import struct
 import subprocess
+import wave
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -13,6 +16,12 @@ class TTSClient:
         self.template = os.getenv("TTS_SHELL_COMMAND", "").strip()
         self.auto_enabled = os.getenv("TTS_AUTO_ENABLED", "true").lower() == "true"
         self.language = os.getenv("TTS_LANGUAGE", "de")
+        self.ready_announcement_enabled = os.getenv("READY_ANNOUNCEMENT_ENABLED", "true").lower() == "true"
+        self.ready_announcement_text = os.getenv("READY_ANNOUNCEMENT_TEXT", "Ich bin jetzt einsatzbereit.").strip()
+        self.wake_beep_enabled = os.getenv("WAKE_BEEP_ENABLED", "true").lower() == "true"
+        self.wake_beep_frequency_hz = int(os.getenv("WAKE_BEEP_FREQUENCY_HZ", "880"))
+        self.wake_beep_duration_ms = int(os.getenv("WAKE_BEEP_DURATION_MS", "120"))
+        self.wake_beep_volume = float(os.getenv("WAKE_BEEP_VOLUME", "0.25"))
 
     @staticmethod
     def _run(cmd: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -70,6 +79,46 @@ class TTSClient:
 
         wav_path.unlink(missing_ok=True)
         logger.info("TTS-Autoplay abgeschlossen: %s/%s Sinks erfolgreich", success_count, len(sinks))
+
+    def announce_ready(self) -> None:
+        if not self.ready_announcement_enabled:
+            return
+        if not self.ready_announcement_text:
+            return
+        self.speak(self.ready_announcement_text)
+
+    def beep(self) -> None:
+        if not self.wake_beep_enabled:
+            return
+
+        tmp = NamedTemporaryFile(delete=False, suffix=".wav")
+        tmp.close()
+        wav_path = Path(tmp.name)
+
+        try:
+            self._write_sine_beep_wav(wav_path)
+            playback = self._run(["paplay", str(wav_path)])
+            if playback.returncode != 0:
+                logger.warning("Wake-Beep fehlgeschlagen (rc=%s): %s", playback.returncode, (playback.stderr or playback.stdout).strip())
+        finally:
+            wav_path.unlink(missing_ok=True)
+
+    def _write_sine_beep_wav(self, path: Path) -> None:
+        sample_rate = 16000
+        sample_count = max(1, int(sample_rate * (self.wake_beep_duration_ms / 1000.0)))
+        volume = max(0.0, min(1.0, self.wake_beep_volume))
+        amplitude = int(32767 * volume)
+
+        with wave.open(str(path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sample_rate)
+
+            frames = bytearray()
+            for i in range(sample_count):
+                value = int(amplitude * math.sin(2.0 * math.pi * self.wake_beep_frequency_hz * i / sample_rate))
+                frames.extend(struct.pack("<h", value))
+            wav.writeframes(bytes(frames))
 
     def speak(self, text: str) -> None:
         if not text.strip():
