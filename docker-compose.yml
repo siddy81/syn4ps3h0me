@@ -268,7 +268,33 @@ services:
       WEBUI_ADMIN_NAME: ${OPEN_WEBUI_ADMIN_NAME}
     volumes:
       - open-webui:/app/backend/data
-      - ./open-webui/knowledge:/app/backend/data/knowledge-import:ro
+      - ./open-webui/knowledge:/app/backend/data/knowledge-import/user-content:ro
+      - ./:/app/backend/data/knowledge-import/syn4ps3h0me-live:ro
+
+
+  open-webui-knowledge-bootstrap:
+    image: python:3.12-alpine
+    container_name: open-webui-knowledge-bootstrap
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - open-webui
+    environment:
+      OPENWEBUI_URL: ${OPENWEBUI_URL:-http://127.0.0.1:3000}
+      OPENWEBUI_EMAIL: ${OPEN_WEBUI_ADMIN_EMAIL}
+      OPENWEBUI_PASSWORD: ${OPEN_WEBUI_ADMIN_PASSWORD}
+      BOOTSTRAP_STATE_FILE: /bootstrap/.knowledge_bootstrap_state.json
+      KB_NAME_USER_CONTENT: ${OPEN_WEBUI_KB_USER_CONTENT_NAME:-user-content}
+      KB_NAME_REPO: ${OPEN_WEBUI_KB_REPO_NAME:-syn4ps3h0me-live}
+      KNOWLEDGE_MAX_FILE_MB: ${OPEN_WEBUI_KB_MAX_FILE_MB:-25}
+      KNOWLEDGE_PROCESS_TIMEOUT_SECONDS: ${OPEN_WEBUI_KB_PROCESS_TIMEOUT_SECONDS:-180}
+      KNOWLEDGE_SYNC_INTERVAL_SECONDS: ${OPEN_WEBUI_KB_SYNC_INTERVAL_SECONDS:-90}
+    volumes:
+      - ./open-webui/knowledge:/bootstrap
+      - ./open-webui/knowledge:/knowledge/user-content:ro
+      - ./:/knowledge/syn4ps3h0me-live:ro
+      - ./open-webui/knowledge/bootstrap_knowledge.py:/app/bootstrap_knowledge.py:ro
+    command: ["sh", "-c", "while true; do python /app/bootstrap_knowledge.py; sleep ${KNOWLEDGE_SYNC_INTERVAL_SECONDS}; done"]
 
 
 
