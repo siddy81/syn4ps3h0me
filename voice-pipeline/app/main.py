@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 from openwakeword.model import Model
 
+from .error_messages import build_shelly_unavailable_message
 from .integrations.llm_client import OllamaClient
 from .integrations.shelly_client import ShellyClient
 from .router import CommandRouter, RouteTarget
@@ -342,8 +343,10 @@ class VoicePipeline:
                     self._tts.speak(confirmation)
                 else:
                     logger.error("Smart-Home-Befehl fehlgeschlagen: %s", response.message)
+                    self._tts.speak(build_shelly_unavailable_message(response.message))
             except Exception as exc:
                 logger.exception("Shelly-Integration fehlgeschlagen: %s", exc)
+                self._tts.speak(build_shelly_unavailable_message(str(exc)))
             return
 
         try:
