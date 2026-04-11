@@ -50,12 +50,15 @@ Der Sync verarbeitet die komplette Ordnerstruktur rekursiv (z. B. `rezepte/famil
 - `OPEN_WEBUI_WORKSPACE_MODEL_ID` (Default: `llama3.2-3b-workspace`)
 - `OPEN_WEBUI_WORKSPACE_MODEL_NAME` (Default: `Llama 3.2 3B (Workspace)`)
 - `OPEN_WEBUI_WORKSPACE_MODEL_BASE_ID` (Default: `llama3.2:3b`)
+- `OPEN_WEBUI_ATTACH_KNOWLEDGE_TO_ALL_MODELS` (Default: `true`) – hängt alle vom Sync bekannten Wissenssammlungen automatisch an alle Modelle
 - `KNOWLEDGE_SYNC_INTERVAL_SECONDS` (Default: `120`)
 
 ## Workspace-Modell Auto-Setup
 
 Der Sync-Service versucht beim Lauf automatisch ein Workspace-Modell für `llama3.2:3b` anzulegen (wenn `OPEN_WEBUI_WORKSPACE_MODEL_ENABLED=true`).
 So erscheint das Modell auch unter `Workspace -> Models`, statt nur im normalen Modell-Selector.
+
+Zusätzlich werden (wenn `OPEN_WEBUI_ATTACH_KNOWLEDGE_TO_ALL_MODELS=true`) alle synchronisierten Knowledge-Collections automatisch in den Modelleinstellungen hinterlegt, sodass kein manuelles Klicken auf „Wissensspeicher auswählen“ pro Modell mehr nötig ist.
 
 ## Hinweis zur Wartung
 

@@ -85,6 +85,7 @@ Zentrale Eigenschaften:
 - Bei Dateiänderungen wird alte Zuordnung entfernt und die neue Version verknüpft (keine redundanten Mehrfacheinträge)
 - Verfolgt Dateien über ihren relativen Pfad, damit gleichnamige Dateien in verschiedenen Unterordnern sauber getrennt bleiben
 - Kann optional automatisch ein Workspace-Modell für llama3.2:3b anlegen (sichtbar unter Workspace -> Models)
+- Kann alle synchronisierten Knowledge-Collections automatisch an alle Modelle binden (kein manuelles Zuweisen pro Modell)
 - Unterstützt: txt, md, pdf, docx, doc, rtf, csv, json
 
 4.5 RAG-Qualitätsempfehlungen

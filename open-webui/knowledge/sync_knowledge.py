@@ -281,6 +281,81 @@ class WebUIClient:
             "Please create it once manually in Workspace -> Models."
         )
 
+    def get_model(self, model_id: str) -> dict[str, Any] | None:
+        for path in (f"/api/v1/models/model?id={model_id}", f"/api/models/model?id={model_id}"):
+            try:
+                data = self._request("GET", path).json()
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                continue
+        return None
+
+    def update_model(self, model_form: dict[str, Any]) -> bool:
+        for path in ("/api/v1/models/model/update", "/api/models/model/update"):
+            try:
+                self._request(
+                    "POST",
+                    path,
+                    json=model_form,
+                    headers={"Content-Type": "application/json"},
+                    expected=(200, 201),
+                )
+                return True
+            except Exception:
+                continue
+        return False
+
+    def attach_knowledge_to_all_models(self, knowledge_bindings: list[dict[str, str]]) -> None:
+        if not knowledge_bindings:
+            return
+
+        try:
+            models = self.list_models()
+        except Exception as exc:
+            print(f"[sync] WARN: Could not list models for knowledge attachment: {exc}")
+            return
+
+        # Deduplicate by model id
+        unique_model_ids = sorted({str(model.get("id", "")).strip() for model in models if model.get("id")})
+        for model_id in unique_model_ids:
+            model = self.get_model(model_id)
+            if not model:
+                continue
+
+            meta = model.get("meta") or {}
+            if not isinstance(meta, dict):
+                meta = {}
+
+            existing_knowledge = meta.get("knowledge", [])
+            existing_ids = {
+                str(item.get("id"))
+                for item in existing_knowledge
+                if isinstance(item, dict) and item.get("id")
+            } if isinstance(existing_knowledge, list) else set()
+
+            merged_knowledge = list(existing_knowledge) if isinstance(existing_knowledge, list) else []
+            for binding in knowledge_bindings:
+                if binding["id"] not in existing_ids:
+                    merged_knowledge.append(binding)
+                    existing_ids.add(binding["id"])
+
+            meta["knowledge"] = merged_knowledge
+
+            model_form = {
+                "id": model.get("id"),
+                "base_model_id": model.get("base_model_id"),
+                "name": model.get("name") or model.get("id"),
+                "meta": meta,
+                "params": model.get("params") or {},
+                "is_active": bool(model.get("is_active", True)),
+            }
+
+            if self.update_model(model_form):
+                print(f"[sync] Attached {len(knowledge_bindings)} knowledge collections to model {model_id}")
+            else:
+                print(f"[sync] WARN: Could not update model knowledge bindings for {model_id}")
+
 
 def load_state(path: pathlib.Path) -> dict[str, Any]:
     if not path.exists():
@@ -321,6 +396,7 @@ def sync_once() -> None:
     workspace_model_id = env("OPEN_WEBUI_WORKSPACE_MODEL_ID", "llama3.2-3b-workspace")
     workspace_model_name = env("OPEN_WEBUI_WORKSPACE_MODEL_NAME", "Llama 3.2 3B (Workspace)")
     workspace_model_base_id = env("OPEN_WEBUI_WORKSPACE_MODEL_BASE_ID", "llama3.2:3b")
+    attach_knowledge_to_all_models = os.getenv("OPEN_WEBUI_ATTACH_KNOWLEDGE_TO_ALL_MODELS", "true").lower() in {"1", "true", "yes"}
     knowledge_desc = env(
         "OPEN_WEBUI_KNOWLEDGE_DESCRIPTION",
         "Automatisch synchronisierte Projekt-Dokumentation aus /knowledge-import",
@@ -418,6 +494,21 @@ def sync_once() -> None:
                 removed += 1
             del stale_entry["files"][stale_rel]
         del categories_state[stale_category]
+
+    if attach_knowledge_to_all_models:
+        bindings: list[dict[str, str]] = []
+        for category_entry in categories_state.values():
+            knowledge_id = str(category_entry.get("knowledge_id", "")).strip()
+            knowledge_name = str(category_entry.get("knowledge_name", "")).strip()
+            if knowledge_id:
+                bindings.append(
+                    {
+                        "id": knowledge_id,
+                        "name": knowledge_name or knowledge_id,
+                        "type": "collection",
+                    }
+                )
+        client.attach_knowledge_to_all_models(bindings)
 
     save_state(state_path, state)
     print(f"[sync] Done. synced={synced}, skipped={skipped}, removed={removed}, categories={len(files_by_category)}")
