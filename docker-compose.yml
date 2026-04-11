@@ -275,7 +275,7 @@ services:
   open-webui-knowledge-bootstrap:
     image: python:3.12-alpine
     container_name: open-webui-knowledge-bootstrap
-    restart: "no"
+    restart: unless-stopped
     network_mode: host
     depends_on:
       - open-webui
@@ -288,12 +288,13 @@ services:
       KB_NAME_REPO: ${OPEN_WEBUI_KB_REPO_NAME:-syn4ps3h0me-live}
       KNOWLEDGE_MAX_FILE_MB: ${OPEN_WEBUI_KB_MAX_FILE_MB:-25}
       KNOWLEDGE_PROCESS_TIMEOUT_SECONDS: ${OPEN_WEBUI_KB_PROCESS_TIMEOUT_SECONDS:-180}
+      KNOWLEDGE_SYNC_INTERVAL_SECONDS: ${OPEN_WEBUI_KB_SYNC_INTERVAL_SECONDS:-90}
     volumes:
       - ./open-webui/knowledge:/bootstrap
       - ./open-webui/knowledge:/knowledge/user-content:ro
       - ./:/knowledge/syn4ps3h0me-live:ro
       - ./open-webui/knowledge/bootstrap_knowledge.py:/app/bootstrap_knowledge.py:ro
-    command: ["python", "/app/bootstrap_knowledge.py"]
+    command: ["sh", "-c", "while true; do python /app/bootstrap_knowledge.py; sleep ${KNOWLEDGE_SYNC_INTERVAL_SECONDS}; done"]
 
 
 

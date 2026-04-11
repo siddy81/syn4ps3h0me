@@ -21,3 +21,8 @@ Optional automatisch nach jedem Stack-Start ausführen:
 ```bash
 docker compose up -d open-webui open-webui-knowledge-bootstrap
 ```
+
+
+### Offizielle Doku-Hinweis
+Laut Open WebUI RAG-Dokumentation müssen lokale Dateien in Workspace/Documents/Knowledge hochgeladen werden.
+Dieser Bootstrap-Service automatisiert genau diesen Upload-Prozess per API für `user-content` und `syn4ps3h0me-live`.
