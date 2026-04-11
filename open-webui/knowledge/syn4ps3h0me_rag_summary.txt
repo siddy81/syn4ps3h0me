@@ -6,6 +6,8 @@ HINWEIS (Live-RAG): Der komplette Projektordner wird per Linux Bind-Mount live n
 /app/backend/data/knowledge-import/syn4ps3h0me-live in den Open-WebUI-Container eingebunden
 (ohne Kopien, Änderungen im Repo sind direkt sichtbar).
 Eigene User-Dokumente liegen parallel unter /app/backend/data/knowledge-import/user-content.
+Automatischer Import: Der Service `open-webui-knowledge-bootstrap` legt/aktualisiert
+Knowledge-Einträge automatisch aus `user-content` und `syn4ps3h0me-live`.
 
 ======================================================================
 1) PROJEKTZIEL UND NUTZEN
