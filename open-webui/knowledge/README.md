@@ -13,17 +13,25 @@ gemountet.
 
 ## Automatisches Einlesen (RAG, out of the box)
 
-Zusätzlich läuft der Service `open-webui-knowledge-sync`, der Dateien und Unterordner **rekursiv** aus diesem Ordner automatisch per Open-WebUI-API in eine Knowledge Base synchronisiert.
+Der Service `open-webui-knowledge-sync` synchronisiert Inhalte automatisch per Open-WebUI-API.
 
-Standardziel:
-- Knowledge Base Name: `syn4ps3h0me`
+### Kategorien (Knowledge Collections)
 
-Damit ist das Wissen nach Stack-Start ohne manuelle UI-Importschritte in Open WebUI als Knowledge verfügbar.
+- **Jeder Top-Level-Ordner** unter `open-webui/knowledge/` wird als **eigene Knowledge-Kategorie** behandelt.
+  - Beispiel: `Rezepte/` -> Knowledge-Kategorie `Rezepte`
+- **Dateien im Root** von `open-webui/knowledge/` landen in einer separaten Root-Kategorie.
+  - Standardname: `syn4ps3h0me` (anpassbar)
+
+### Keine Redundanz / Updates statt Duplikate
+
+- Dateien werden per SHA256 verglichen.
+- Bei Änderungen wird die alte Datei-Verknüpfung entfernt und durch die neue ersetzt.
+- Gelöschte lokale Dateien werden auch aus Open WebUI entfernt.
+- Gleichnamige Dateien in verschiedenen Unterordnern sind möglich (Tracking über relativen Pfad).
 
 ## Unterordner / rekursive Struktur
 
 Der Sync verarbeitet die komplette Ordnerstruktur rekursiv (z. B. `rezepte/familie/*.md`, `buecher/wissen/**/*.pdf`).
-Dateien werden über ihren relativen Pfad getrackt, damit gleichnamige Dateien in unterschiedlichen Unterordnern korrekt behandelt werden.
 
 ## Unterstützte Dateitypen (Standard)
 
@@ -36,7 +44,8 @@ Dateien werden über ihren relativen Pfad getrackt, damit gleichnamige Dateien i
 - `OPEN_WEBUI_BASE_URL` (Default: `http://127.0.0.1:8080`)
 - `OPEN_WEBUI_ADMIN_EMAIL`
 - `OPEN_WEBUI_ADMIN_PASSWORD`
-- `OPEN_WEBUI_KNOWLEDGE_NAME` (Default: `syn4ps3h0me`)
+- `OPEN_WEBUI_ROOT_KNOWLEDGE_NAME` (Default: `syn4ps3h0me`) – Kategorie für Root-Dateien
+- `OPEN_WEBUI_KNOWLEDGE_PREFIX` (Default: leer) – optionales Prefix für Ordner-Kategorien
 - `KNOWLEDGE_SYNC_INTERVAL_SECONDS` (Default: `120`)
 
 ## Hinweis zur Wartung

@@ -80,6 +80,9 @@ Zentrale Eigenschaften:
 - Service: open-webui-knowledge-sync
 - Läuft zyklisch (Default 120s) und erkennt Änderungen per Datei-Hash
 - Liest Ordner rekursiv ein (auch tiefe Unterordnerstrukturen)
+- Ordner-Logik: jeder Top-Level-Ordner wird als eigene Knowledge-Kategorie behandelt
+- Root-Dateien werden in einer separaten Root-Kategorie gesammelt (Default: syn4ps3h0me)
+- Bei Dateiänderungen wird alte Zuordnung entfernt und die neue Version verknüpft (keine redundanten Mehrfacheinträge)
 - Verfolgt Dateien über ihren relativen Pfad, damit gleichnamige Dateien in verschiedenen Unterordnern sauber getrennt bleiben
 - Unterstützt: txt, md, pdf, docx, doc, rtf, csv, json
 
