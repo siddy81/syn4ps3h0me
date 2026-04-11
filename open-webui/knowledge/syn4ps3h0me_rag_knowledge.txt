@@ -1,0 +1,269 @@
+SYN4PS3H0ME – RAG WISSENSBASIS (für Open WebUI)
+Version: 2026-04-11
+Sprache: Deutsch
+
+==================================================
+1) ZIEL DIESER DATEI
+==================================================
+Diese Datei ist als stabile Wissensbasis für Retrieval-Augmented Generation (RAG) in Open WebUI gedacht.
+Sie beschreibt:
+- Architektur und Zweck des Projekts
+- Dienste, Datenflüsse und Betriebsmodell
+- Konfiguration (wichtigste Variablen/Dateien)
+- Fehleranalyse-/Wartungsansätze
+- Code-Navigation (wo liegt welche Logik)
+
+Wichtig:
+- Der Quellcode verändert sich laufend.
+- Daher enthält diese Datei bewusst KEINE großen Codekopien.
+- Stattdessen enthält sie einen detaillierten "Code-Navigator" mit Datei- und Verantwortlichkeitsübersicht,
+  damit Nutzer jederzeit gezielt technische Details nachfragen und aktuelle Änderungen nachvollziehen können.
+
+==================================================
+2) PROJEKT-KURZÜBERBLICK
+==================================================
+syn4ps3h0me ist ein lokales Smart-Home- und Homelab-Setup (Raspberry Pi Fokus), das eine komplette Basisplattform für
+Monitoring, Messaging, DNS/Adblocking, Reverse Proxy, lokale KI und Voice-Automation bereitstellt.
+
+Zentrale Eigenschaften:
+- Einfache Installation über install.sh
+- Docker-Compose als Betriebsgrundlage für Kernservices
+- Monitoring-Stack (Telegraf + InfluxDB + Grafana)
+- MQTT-Broker (Mosquitto)
+- DNS/Adblocking (Pi-hole)
+- HTTPS-Zugriff/Reverse Proxy (Caddy)
+- Open WebUI für lokale KI-Interaktion inkl. RAG
+- Voice-Pipeline mit Wake-Word, lokaler STT/LLM/TTS und Shelly-Integration
+
+==================================================
+3) SYSTEMARCHITEKTUR (LOGISCHE SICHT)
+==================================================
+3.1 Infrastruktur-/Core-Services
+- Mosquitto: MQTT Nachrichtenbus
+- InfluxDB: Zeitreihenspeicher
+- Telegraf: Datensammlung und Ingestion in InfluxDB
+- Grafana: Dashboards/Visualisierung
+- Pi-hole: DNS + Werbeblocker + optional DHCP
+- Caddy: Reverse Proxy + TLS Terminierung
+
+3.2 KI-/Interaktions-Layer
+- Open WebUI: Chat-Frontend, Modellzugriff, Dokumente/Knowledge/RAG
+- Voice-Pipeline:
+  - Wake-Word Erkennung
+  - Whisper Speech-to-Text
+  - Command-Routing (Smart-Home vs. LLM)
+  - Shelly REST-Steuerung
+  - TTS Ausgabe
+
+3.3 Persistenz & Konfiguration
+- Docker volumes für persistente Servicedaten
+- Servicekonfigurationen in jeweiligen Unterordnern (z. B. telegraf/, grafana/, pihole/, caddy/, voice-pipeline/)
+- Secrets/Passwörter über .env
+
+==================================================
+4) OPEN WEBUI + RAG BETRIEBSMODELL (WICHTIG)
+==================================================
+4.1 Wissensordner in diesem Projekt
+- Host-Pfad: open-webui/knowledge/
+- In den Container read-only gemountet nach: /app/backend/data/knowledge-import
+
+4.2 Erwartetes Verhalten gemäß Open WebUI RAG-Konzept
+- Dateien im knowledge-import-Ordner sind als Importquelle verfügbar.
+- Ein Auto-Sync-Service übernimmt Upload + Verarbeitung + Zuordnung zur konfigurierten Knowledge Base über die Open-WebUI-API.
+- Danach kann Wissen im Chat per Knowledge-Auswahl oder Referenz genutzt werden.
+
+4.3 "Out of the box" Betriebsziel
+- Nach Start des Compose-Stacks sind Wissensdateien sofort im Container vorhanden und werden automatisch in Open WebUI synchronisiert.
+- Für RAG-Qualität sind Chunking/Embedding-Einstellungen in Open WebUI Admin Settings (Documents) relevant.
+
+4.4 Auto-Sync (technisch)
+- Service: open-webui-knowledge-sync
+- Läuft zyklisch (Default 120s) und erkennt Änderungen per Datei-Hash
+- Liest Ordner rekursiv ein (auch tiefe Unterordnerstrukturen)
+- Ordner-Logik: jeder Top-Level-Ordner wird als eigene Knowledge-Kategorie behandelt
+- Root-Dateien werden in einer separaten Root-Kategorie gesammelt (Default: syn4ps3h0me)
+- Bei Dateiänderungen wird alte Zuordnung entfernt und die neue Version verknüpft (keine redundanten Mehrfacheinträge)
+- Verfolgt Dateien über ihren relativen Pfad, damit gleichnamige Dateien in verschiedenen Unterordnern sauber getrennt bleiben
+- Kann optional automatisch ein Workspace-Modell für llama3.2:3b anlegen (sichtbar unter Workspace -> Models)
+- Kann alle synchronisierten Knowledge-Collections automatisch an alle Modelle binden (kein manuelles Zuweisen pro Modell)
+- Unterstützt: txt, md, pdf, docx, doc, rtf, csv, json
+
+4.5 RAG-Qualitätsempfehlungen
+- Strukturierte .txt/.md Dokumente mit klaren Überschriften verwenden
+- Thematisch getrennte Dateien statt einer riesigen Monolith-Datei
+- Bei großen Dokumenten auf Chunk Size, Chunk Overlap und Chunk Min Size Target achten
+- Bei Ollama-Modellen ausreichend Context Length konfigurieren
+
+==================================================
+5) INSTALLATION, BOOTSTRAP & BETRIEB
+==================================================
+5.1 Bootstrap-Skript
+- install.sh übernimmt große Teile der Erstinstallation:
+  - Systempakete
+  - Docker
+  - Hailo-bezogene Vorbereitungen
+  - ggf. service setup (hailo-ollama)
+  - Start des Compose-Stacks
+
+5.2 Compose-Laufzeit
+- docker-compose.yml definiert alle zentralen Services, Netzwerke und Volumes.
+- Die Services sind grundsätzlich auf Dauerbetrieb (restart unless-stopped/always) ausgelegt.
+
+5.3 Secrets / Umgebungsvariablen
+- Kritische Zugangsdaten werden über .env bereitgestellt.
+- Für Produktivbetrieb müssen alle relevanten Passwörter/Tokens gesetzt sein.
+
+==================================================
+6) DATENFLÜSSE (PRAKTISCHE SICHT)
+==================================================
+6.1 Monitoring-Datenfluss
+Sensor/Host/MQTT -> Telegraf -> InfluxDB -> Grafana Dashboards
+
+6.2 DNS/Web-Zugriff
+Clients -> Pi-hole (DNS, Filtering) -> interne Namensauflösung
+Browser/Clients -> Caddy -> interne Services (HTTPS/Proxy)
+
+6.3 Voice-/KI-Datenfluss
+Mikrofon -> Wake-Word Trigger -> Audioaufnahme -> Whisper STT -> Router:
+- Smart-Home Intent erkannt -> Shelly REST command
+- Sonst -> LLM Request -> Antwort -> TTS -> Audioausgabe
+
+6.4 Open WebUI RAG-Datenfluss
+Wissensdatei (open-webui/knowledge) -> Import in Workspace/Knowledge -> Embeddings/Index -> Chat Retrieval
+
+==================================================
+7) KONFIGURATION: WICHTIGE BEREICHE
+==================================================
+7.1 docker-compose.yml
+- Definiert Service-Images, Ports, Volumes, Env, Networks.
+- Relevant für RAG: open-webui volume mount auf /app/backend/data/knowledge-import
+
+7.2 README.md
+- Betriebs-/Installationsdokumentation
+- Enthält Bedienhinweise für Open WebUI Knowledge Import
+
+7.3 telegraf/telegraf.conf
+- Input/Output Pipeline für Metriken
+
+7.4 grafana/provisioning + grafana/dashboards
+- Datasource Provisioning und vordefinierte Dashboards
+
+7.5 pihole/*
+- Adlists, DNSMasq-Erweiterungen, Webserver-Config
+
+7.6 caddy/config.json
+- Reverse Proxy Routen/Upstreams
+
+7.7 voice-pipeline/app/*
+- Hauptlogik für Spracheingabe, Routing, Integrationen, Konfiguration
+
+7.8 shelly_script/*
+- Skripte für Shelly Geräteintegration
+
+==================================================
+8) CODE-NAVIGATOR (OHNE CODE-KOPIEN)
+==================================================
+8.1 Root
+- install.sh: Vollautomatisches Setup/Basisprovisionierung
+- uninstall.sh: Rückbau/Deinstallation
+- docker-compose.yml: Laufzeitorchestrierung
+- README.md: Hauptdokumentation
+- CHANGELOG.md: Änderungsübersicht
+
+8.2 voice-pipeline/
+- Dockerfile: Build der Voice Runtime
+- requirements.txt: Python-Abhängigkeiten
+- app/main.py: Laufzeiteinstieg
+- app/router.py: Intent-/Command-Routing
+- app/stt_whisper.py: Whisper-STT Verarbeitung
+- app/tts.py: Text-to-Speech Ausgabe
+- app/hailo_runtime.py: Laufzeitbezug zu Hailo-Umgebung
+- app/error_messages.py: Fehlertexte/Antworten
+- app/integrations/llm_client.py: LLM API Client
+- app/integrations/shelly_client.py: Shelly REST Client
+- app/config/shelly_devices.example.json: Beispiel-Mapping
+- app/config/shelly_devices.json: Aktives Mapping (lokal anpassen)
+- tests/*: Unit-/Funktionstests der Voice-Komponenten
+
+8.3 grafana/
+- provisioning/datasources/influxdb.yml: Influx datasource
+- provisioning/dashboards/*: Dashboard-Provisioning
+- dashboards/*.json: Dashboarddefinitionen
+
+8.4 influxdb/
+- config/influxdb.conf: InfluxDB Konfiguration
+- config/init-influxdb.iql: Initialisierung
+
+8.5 mosquitto/
+- config/mosquitto.conf: Broker-Konfiguration
+
+8.6 pihole/
+- etc-dnsmasq.d/*.conf: DNSMasq Zusatzkonfig
+- adlists.list: Blocklisten
+- lighttpd-external.conf: Pi-hole Webserver-Anpassung
+
+8.7 caddy/
+- config.json: Reverse Proxy Setup
+
+8.8 open-webui/
+- knowledge/README.md: Hinweis zur Nutzung als Importquelle
+- knowledge/*.txt|*.md|...: Dokumente für RAG-Ingestion
+
+==================================================
+9) BETRIEBS- UND TROUBLESHOOTING-CHECKLISTE
+==================================================
+9.1 Grundchecks
+- docker compose ps
+- docker compose logs -f <service>
+- systemctl status hailo-ollama (falls verwendet)
+
+9.2 Open WebUI / RAG
+- Prüfen, ob knowledge-Ordner im Container sichtbar ist
+- Dokument in Workspace > Knowledge importieren
+- Bei schlechter Retrieval-Qualität:
+  - Chunking-Parameter prüfen
+  - Embedding-Modell prüfen
+  - Reindex ausführen (falls Embedding geändert)
+
+9.3 Voice-Pipeline
+- Audio-Devices/Permissions prüfen (/dev/snd, audio-Gruppe)
+- Wake-Word-Schwellenwert anpassen
+- Whisper-Modell/Language Settings prüfen
+- Shelly Device Map Pfade/URLs validieren
+
+9.4 Monitoring
+- Telegraf Inputs erreichbar?
+- InfluxDB Token/Bucket/Org korrekt?
+- Grafana Datasource healthy?
+
+==================================================
+10) EMPFOHLENE FRAGEN FÜR TECHNISCHE NACHFRAGEN
+==================================================
+Diese Wissensbasis ist bewusst so strukturiert, dass gezielte Nachfragen einfach möglich sind, z. B.:
+- "Welche Compose-Umgebungsvariablen steuern die Voice-Pipeline?"
+- "Wie läuft der Router in voice-pipeline/app/router.py genau?"
+- "Wie erweitere ich Shelly auf mehrere Räume?"
+- "Welche Dateien betreffen Grafana-Provisioning?"
+- "Wie verbessere ich RAG Chunking für lange technische Dokus?"
+- "Welche Ports und Volumes nutzt jeder Service?"
+
+==================================================
+11) WARTUNGSPRINZIP (WICHTIG FÜR DYNAMISCHEN CODE)
+==================================================
+Da sich der Code laufend ändert, gilt:
+- Keine statischen Voll-Codekopien als RAG-Wissen pflegen.
+- Stattdessen diese Wissensbasis regelmäßig aktualisieren:
+  - Architektur
+  - Dateipfade/Verantwortlichkeiten
+  - Betriebsanweisungen
+  - Konfigurations- und Fehleranalysehinweise
+
+So bleibt RAG stabil, verständlich und wartbar, ohne bei jedem Commit veraltete Code-Duplikate zu erzeugen.
+
+==================================================
+12) KURZFAZIT
+==================================================
+syn4ps3h0me liefert eine lokale, modulare Smart-Home- und KI-Basis. Diese Datei bildet die
+strukturierte, langlebige RAG-Einstiegsschicht: technisch detailliert genug für selbstständige Konfiguration,
+aber ohne fragilen Code-Clone. Für tiefe Detailfragen sollte auf konkrete aktuelle Dateien/Funktionen referenziert
+werden (Dateipfade im Code-Navigator).
