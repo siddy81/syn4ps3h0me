@@ -75,6 +75,13 @@ class CommandRouter:
     def _extract_alias(text: str, alias_map: dict[str, tuple[str, ...]]) -> str | None:
         for canonical, aliases in alias_map.items():
             for alias in aliases:
-                if re.search(rf"\b{re.escape(alias)}\b", text):
+                escaped = re.escape(alias)
+                if re.search(rf"\b{escaped}\b", text):
+                    return canonical
+                # Deutsche Komposita wie "wohnzimmerlicht" erkennen:
+                # Prefix-/Suffix-Matches nur für längere Aliases erlauben.
+                if len(alias) >= 4 and re.search(rf"\b{escaped}", text):
+                    return canonical
+                if len(alias) >= 4 and re.search(rf"{escaped}\b", text):
                     return canonical
         return None
