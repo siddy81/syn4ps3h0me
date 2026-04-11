@@ -17,7 +17,7 @@ from openwakeword.model import Model
 from .integrations.llm_client import OllamaClient
 from .integrations.shelly_client import ShellyClient
 from .router import CommandRouter, RouteTarget
-from .stt_whisper import WhisperHFTranscriber
+from .stt_whisper import create_transcriber
 from .tts import TTSClient
 
 
@@ -47,7 +47,7 @@ class VoicePipeline:
         self._model: Model | None = None
         self._active_threads: dict[str, threading.Thread] = {}
 
-        self._transcriber = WhisperHFTranscriber()
+        self._transcriber = create_transcriber()
         self._router = CommandRouter()
         self._llm = OllamaClient()
         self._shelly = ShellyClient()
