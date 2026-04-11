@@ -35,6 +35,9 @@ class WhisperHFTranscriber:
         )
         return self._pipeline
 
+    def preload(self) -> None:
+        self._load_pipeline()
+
     def transcribe_file(self, audio_path: str, language: str | None = None) -> str:
         resolved_audio = Path(audio_path)
         if not resolved_audio.exists():
