@@ -1,0 +1,245 @@
+SYN4PS3H0ME – RAG-WISSENSDATEI (TECHNISCHE ZUSAMMENFASSUNG)
+Stand: 2026-04-11
+Zielgruppe: Betreiber:innen des Projekts auf Raspberry Pi (lokales Smart Home + Monitoring + Voice + LLM)
+
+HINWEIS (Live-RAG): Der komplette Projektordner wird per Linux Bind-Mount live nach
+/app/backend/data/knowledge-import/syn4ps3h0me-live in den Open-WebUI-Container eingebunden
+(ohne Kopien, Änderungen im Repo sind direkt sichtbar).
+
+======================================================================
+1) PROJEKTZIEL UND NUTZEN
+======================================================================
+
+syn4ps3h0me ist ein lokaler Infrastruktur- und Smart-Home-Stack für Raspberry Pi.
+Der Fokus liegt auf:
+- Lokaler Datensammlung und Monitoring (MQTT -> Telegraf -> InfluxDB -> Grafana)
+- Lokaler DNS-/Netzwerksteuerung (Pi-hole)
+- Interner HTTPS-Zugriff im LAN (Caddy)
+- Lokaler KI-Nutzung (Open WebUI + Hailo/Ollama-Integration)
+- Lokaler Sprachsteuerung (Voice-Pipeline mit Wakeword, STT, Router, Shelly, TTS)
+
+Das Projekt ist so aufgebaut, dass der Großteil über install.sh + docker compose startbar ist,
+und anschließend über .env sowie JSON-Konfigs anpassbar bleibt.
+
+======================================================================
+2) HAUPTKOMPONENTEN IM STACK
+======================================================================
+
+2.1 Core Services (docker-compose)
+- mosquitto: MQTT-Broker, inkl. Passwortverwaltung beim Containerstart
+- telegraf: liest MQTT und Host-Metriken, schreibt in InfluxDB
+- influxdb: Zeitreihen-DB
+- grafana: Dashboards, provisionierte Datasource + Dashboards
+- pihole: lokaler DNS + optional DHCP + Adblocking
+- caddy: Reverse Proxy für lokale HTTPS-Domains
+- open-webui: Chat-Oberfläche, kann Knowledge-Dateien importieren (RAG)
+- voice-pipeline: Wakeword/Whisper/LLM/Shelly/TTS für lokale Sprachsteuerung
+
+2.2 Voice-Pipeline (fachlich)
+Signalfluss:
+1. Wakeword-Erkennung (openwakeword, konfigurierbares Modell)
+2. Folgekommando aufnehmen (parecord)
+3. Transkription via Whisper
+   - Modus HF lokal
+   - Modus Hailo lokal
+   - Modus auto (Hailo, sonst HF-Fallback)
+4. Routing:
+   - Smart-Home-Befehl erkannt -> Shelly REST
+   - Sonst -> LLM-Chatendpoint (/api/chat)
+5. Ausgabe per TTS (custom command oder auto per espeak-ng + paplay)
+
+2.3 Open WebUI Knowledge Mount
+Host:      open-webui/knowledge/
+Container: /app/backend/data/knowledge-import (read-only)
+
+Dateien im Hostordner können in Open WebUI als Knowledge importiert und für RAG-Chats
+verwendet werden.
+
+======================================================================
+3) VERZEICHNIS- UND CODEÜBERBLICK
+======================================================================
+
+Wichtige Root-Dateien:
+- README.md                  -> Betriebs-/Architektur-Doku
+- install.sh                 -> Setup-Automation inkl. Hailo/Ollama-Service
+- docker-compose.yml         -> Gesamtstack + Volumes + Ports + Umgebungen
+- uninstall.sh               -> Deinstall-/Rollback-Helfer
+- CHANGELOG.md               -> Änderungsprotokoll
+
+Wichtige Ordner:
+- voice-pipeline/            -> lokale Sprachsteuerung (Python)
+- grafana/                   -> Dashboards + Provisioning
+- telegraf/                  -> Telegraf-Konfiguration
+- mosquitto/config/          -> MQTT-Konfiguration
+- pihole/                    -> DNS/DHCP/Adlist-Konfiguration
+- caddy/                     -> Reverse-Proxy-Konfiguration
+- influxdb/config/           -> Influx-Init/Konfiguration
+- open-webui/knowledge/      -> RAG-Importordner für Open WebUI
+- shelly_script/             -> auf Shelly-Geräten auszuführende Scripts
+
+======================================================================
+4) WICHTIGE KONFIGURATIONEN (PRAKTISCH)
+======================================================================
+
+4.1 Secrets / Zugangsdaten in .env
+Mindestens folgende Werte setzen:
+- MQTT_PASSWORD
+- INFLUXDB_PASSWORD
+- INFLUXDB_WRITE_TOKEN
+- GRAFANA_ADMIN_PASSWORD
+- PIHOLE_API_PASSWORD
+- PIHOLE_ADMIN_PASSWORD
+- OPEN_WEBUI_ADMIN_PASSWORD
+
+4.2 Voice-Pipeline relevante Variablen
+- WAKEWORD_MODEL, WAKEWORD_MODEL_PATH
+- WAKE_WORD_THRESHOLD, WAKE_EVENT_COOLDOWN_SECONDS
+- POST_WAKE_RECORD_SECONDS, POST_WAKE_MIN_RECORD_SECONDS
+- WHISPER_MODE (hf_local | hailo_local | auto)
+- WHISPER_MODEL, WHISPER_LANGUAGE
+- LLM_BASE_URL, LLM_MODEL, LLM_TIMEOUT_SECONDS
+- SHELLY_DEVICE_MAP_FILE oder SHELLY_DEVICE_MAP_JSON
+- TTS_SHELL_COMMAND, TTS_AUTO_ENABLED, TTS_LANGUAGE
+
+4.3 Shelly-Zuordnung
+Datei (empfohlen): voice-pipeline/app/config/shelly_devices.json
+Schema pro Ziel:
+- id
+- room
+- group (optional)
+- aliases[]
+- base_url
+- command_path
+
+Hinweis: Erfolgreiches Routing hängt stark davon ab, dass Raum-/Aliasbegriffe in Spracheingaben
+mit aliases/group/room matchen.
+
+======================================================================
+5) DATENFLÜSSE UND ABHÄNGIGKEITEN
+======================================================================
+
+5.1 Monitoring-Fluss
+Shelly/Geräte -> MQTT (Mosquitto) -> Telegraf -> InfluxDB -> Grafana Dashboards
+
+5.2 DNS-/Zugriffsfluss
+Clients im LAN -> Pi-hole (DNS-Auflösung) -> Caddy (HTTPS Reverse Proxy) -> Zielservice
+
+5.3 Voice-KI-Fluss
+Mikrofon -> Wakeword -> Audioaufnahme -> Whisper-Transkript -> Router
+-> (a) Shelly REST
+-> (b) LLM API
+-> TTS-Antwort an Audio-Sinks
+
+======================================================================
+6) BETRIEB, START, UPDATE, FEHLERSUCHE
+======================================================================
+
+6.1 Start/Stop
+- Stack starten: docker compose up -d
+- Stack stoppen: docker compose down
+- Status: docker compose ps
+
+6.2 Logs
+- Gesamt: docker compose logs -f
+- Einzelservice: docker compose logs -f <service>
+
+6.3 Häufige Fehlerbilder
+- Keine Voice-Quellen gefunden:
+  Prüfen: /dev/snd Mapping, PipeWire/Pulse Runtime Mount, pactl list sources short
+- LLM nicht erreichbar:
+  Prüfen: LLM_BASE_URL, host.docker.internal Routing, API /api/chat
+- Shelly-Befehl läuft ins Leere:
+  Prüfen: shelly_devices.json aliases/base_url/command_path + Erreichbarkeit der Ziel-URL
+- Pi-hole Passwort scheinbar falsch trotz .env:
+  Persistente Volumes können alte Werte halten -> Passwort explizit im Container setzen
+
+======================================================================
+7) RAG-EMPFEHLUNG FÜR FRAGEN IM BETRIEB
+======================================================================
+
+Für bestmögliche Antworten im Chat empfiehlt sich, diese Wissensdatei gemeinsam mit folgenden
+Dateien zu importieren:
+- README.md
+- docker-compose.yml
+- install.sh
+- voice-pipeline/app/*.py
+- voice-pipeline/app/integrations/*.py
+- telegraf/telegraf.conf
+- mosquitto/config/mosquitto.conf
+- grafana/provisioning/**/*
+- grafana/dashboards/*.json
+- caddy/config.json
+- pihole/**/*
+
+Damit kann die KI i. d. R. sowohl Architekturfragen als auch konkrete Konfigurationsfragen
+(Variablen, Pfade, Flows, Services) beantworten.
+
+======================================================================
+8) "GANZER CODE ALS WISSEN" – PRAKTISCHE VERANKERUNG
+======================================================================
+
+Diese Datei enthält unten zusätzlich ein vollständiges Dateiverzeichnis des Repos.
+So kann der User gezielt nach Datei + Funktion fragen (z. B. "Erkläre router.py Route-Regeln").
+
+Empfohlen:
+- Nach Änderungen am Projekt einmal `docker compose up -d open-webui` ausführen, damit
+  Open WebUI den aktuellen Live-Stand sicher sieht.
+- In Open WebUI den Pfad `syn4ps3h0me-live` importieren, wenn du den kompletten Code
+  + alle Konfigurationen im RAG indexieren willst.
+
+Hinweis:
+Ein riesiger monolithischer "alles-in-einer-Datei"-Dump ist meist schlechter für Retrieval
+(Chunking/Ranking), als mehrere fachlich getrennte Dateien.
+
+======================================================================
+9) VOLLSTÄNDIGE DATEILISTE (CODE-/KONFIG-INDEX)
+======================================================================
+
+CHANGELOG.md
+LICENSE
+README.md
+caddy/config.json
+docker-compose.yml
+grafana/dashboards/host-performance.json
+grafana/dashboards/shelly-blu-security.json
+grafana/dashboards/shelly-ht-g3-cards.json
+grafana/dashboards/shelly-overview.json
+grafana/provisioning/dashboards/dashboards.yml
+grafana/provisioning/dashboards/shelly-public-overview.json
+grafana/provisioning/datasources/influxdb.yml
+influxdb/config/influxdb.conf
+influxdb/config/init-influxdb.iql
+install.sh
+mosquitto/config/mosquitto.conf
+open-webui/knowledge/README.md
+open-webui/knowledge/syn4ps3h0me_rag_summary.txt
+pihole/adlists.list
+pihole/etc-dnsmasq.d/04-static-dhcp.conf
+pihole/lighttpd-external.conf
+requirements-hailo-compat.txt
+shelly_script/README.md
+shelly_script/blu-flow-detector-v1.js
+shelly_script/shelly_1pm_control.js
+telegraf/telegraf.conf
+uninstall.sh
+voice-pipeline/Dockerfile
+voice-pipeline/app/__init__.py
+voice-pipeline/app/config/shelly_devices.example.json
+voice-pipeline/app/config/shelly_devices.json
+voice-pipeline/app/error_messages.py
+voice-pipeline/app/hailo_runtime.py
+voice-pipeline/app/integrations/__init__.py
+voice-pipeline/app/integrations/llm_client.py
+voice-pipeline/app/integrations/shelly_client.py
+voice-pipeline/app/main.py
+voice-pipeline/app/router.py
+voice-pipeline/app/stt_whisper.py
+voice-pipeline/app/tts.py
+voice-pipeline/requirements.txt
+voice-pipeline/tests/test_hailo_runtime.py
+voice-pipeline/tests/test_llm_client.py
+voice-pipeline/tests/test_main_errors.py
+voice-pipeline/tests/test_router.py
+voice-pipeline/tests/test_shelly_client.py
+voice-pipeline/tests/test_stt_whisper.py
+voice-pipeline/tests/test_tts.py

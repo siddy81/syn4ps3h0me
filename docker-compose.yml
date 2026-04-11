@@ -269,6 +269,7 @@ services:
     volumes:
       - open-webui:/app/backend/data
       - ./open-webui/knowledge:/app/backend/data/knowledge-import:ro
+      - ./:/app/backend/data/knowledge-import/syn4ps3h0me-live:ro
 
 
 
