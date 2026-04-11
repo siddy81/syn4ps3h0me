@@ -24,6 +24,21 @@ class TTSTests(unittest.TestCase):
             client = TTSClient()
         self.assertTrue(client.auto_enabled)
 
+    def test_announce_ready_uses_speak(self) -> None:
+        with patch.dict(os.environ, {"READY_ANNOUNCEMENT_ENABLED": "true", "READY_ANNOUNCEMENT_TEXT": "bereit"}, clear=True):
+            client = TTSClient()
+        with patch.object(client, "speak") as speak:
+            client.announce_ready()
+        speak.assert_called_once_with("bereit")
+
+    def test_beep_runs_paplay(self) -> None:
+        client = TTSClient()
+        with patch.object(client, "_run", return_value=FakeResult(0)) as run:
+            client.beep()
+        run.assert_called_once()
+        called_cmd = run.call_args[0][0]
+        self.assertEqual(called_cmd[0], "paplay")
+
 
 if __name__ == "__main__":
     unittest.main()

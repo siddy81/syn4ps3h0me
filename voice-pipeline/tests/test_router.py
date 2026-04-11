@@ -22,6 +22,14 @@ class RouterTests(unittest.TestCase):
         routed = self.router.route("Jarvis, erklär mir Quantenphysik")
         self.assertEqual(routed.target, RouteTarget.LLM)
 
+    def test_routes_compound_room_device_token_to_shelly(self) -> None:
+        routed = self.router.route("Jarvis, schalte das Wohnzimmerlicht aus")
+        self.assertEqual(routed.target, RouteTarget.SHELLY)
+        assert routed.smart_home is not None
+        self.assertEqual(routed.smart_home.action, "off")
+        self.assertEqual(routed.smart_home.room, "wohnzimmer")
+        self.assertEqual(routed.smart_home.device, "licht")
+
 
 if __name__ == "__main__":
     unittest.main()

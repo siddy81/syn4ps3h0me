@@ -5,6 +5,7 @@ import queue
 import subprocess
 import threading
 import time
+import wave
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -13,10 +14,11 @@ from typing import Any
 import numpy as np
 from openwakeword.model import Model
 
+from .error_messages import build_shelly_unavailable_message
 from .integrations.llm_client import OllamaClient
 from .integrations.shelly_client import ShellyClient
 from .router import CommandRouter, RouteTarget
-from .stt_whisper import WhisperHFTranscriber
+from .stt_whisper import create_transcriber
 from .tts import TTSClient
 
 
@@ -32,21 +34,33 @@ class VoicePipeline:
         self.sample_rate = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
         self.wake_threshold = float(os.getenv("WAKE_WORD_THRESHOLD", "0.5"))
         self.wake_event_cooldown_seconds = float(os.getenv("WAKE_EVENT_COOLDOWN_SECONDS", "2.0"))
-        self.post_wake_record_seconds = float(os.getenv("POST_WAKE_RECORD_SECONDS", "6"))
+        self.post_wake_record_max_seconds = float(os.getenv("POST_WAKE_RECORD_SECONDS", "6"))
+        self.post_wake_record_min_seconds = float(os.getenv("POST_WAKE_MIN_RECORD_SECONDS", "0.45"))
+        self.post_wake_silence_seconds = float(os.getenv("POST_WAKE_SILENCE_SECONDS", "0.35"))
+        self.post_wake_silence_rms_threshold = float(os.getenv("POST_WAKE_SILENCE_RMS_THRESHOLD", "550"))
         self.wake_model_name = os.getenv("WAKEWORD_MODEL", "hey_jarvis")
         self.wake_model_path = os.getenv("WAKEWORD_MODEL_PATH", "").strip()
         self.device_refresh_seconds = int(os.getenv("AUDIO_DEVICE_REFRESH_SECONDS", "30"))
+        self.whisper_preload = os.getenv("WHISPER_PRELOAD", "true").lower() == "true"
 
         self._stop_event = threading.Event()
         self._wake_events: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=20)
         self._model: Model | None = None
         self._active_threads: dict[str, threading.Thread] = {}
+        self._ready_announced = False
 
-        self._transcriber = WhisperHFTranscriber()
+        self._transcriber = create_transcriber()
         self._router = CommandRouter()
         self._llm = OllamaClient()
         self._shelly = ShellyClient()
         self._tts = TTSClient()
+
+        if self.whisper_preload:
+            try:
+                logger.info("Whisper-Preload aktiviert, lade Modell beim Start.")
+                self._transcriber.preload()
+            except Exception as exc:
+                logger.warning("Whisper-Preload fehlgeschlagen, fallback auf lazy loading: %s", exc)
 
     @staticmethod
     def _run_cmd(cmd: list[str]) -> tuple[int, str]:
@@ -155,6 +169,10 @@ class VoicePipeline:
                     logger.warning("Source nicht mehr vorhanden: %s", stale)
                     self._active_threads.pop(stale, None)
 
+            if not self._ready_announced:
+                self._tts.announce_ready()
+                self._ready_announced = True
+
             try:
                 event = self._wake_events.get(timeout=self.device_refresh_seconds)
                 self._handle_wake_event(event)
@@ -222,23 +240,76 @@ class VoicePipeline:
         tmp.close()
         wav_path = Path(tmp.name)
 
-        timeout_seconds = max(2, int(self.post_wake_record_seconds + 1))
         cmd = [
-            "timeout",
-            str(timeout_seconds),
             "parecord",
             "--device", source_name,
+            "--raw",
             "--format=s16le",
             "--rate", str(self.sample_rate),
             "--channels", "1",
-            "--file-format=wav",
-            str(wav_path),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if result.returncode not in (0, 124):
-            logger.error("Folgeaufnahme fehlgeschlagen (rc=%s): %s", result.returncode, (result.stderr or result.stdout).strip())
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        assert proc.stdout is not None
+
+        frames: list[bytes] = []
+        chunk_samples = 1024
+        chunk_bytes = chunk_samples * 2
+        start_ts = time.time()
+        silent_since: float | None = None
+        min_duration = max(0.2, self.post_wake_record_min_seconds)
+        max_duration = max(min_duration + 0.2, self.post_wake_record_max_seconds)
+        silence_seconds = max(0.15, self.post_wake_silence_seconds)
+
+        try:
+            while True:
+                data = proc.stdout.read(chunk_bytes)
+                if not data:
+                    break
+                frames.append(data)
+
+                elapsed = time.time() - start_ts
+                if elapsed >= max_duration:
+                    break
+
+                pcm16 = np.frombuffer(data, dtype=np.int16)
+                if pcm16.size == 0:
+                    continue
+
+                rms = float(np.sqrt(np.mean(np.square(pcm16.astype(np.float32)))))
+                speaking = rms >= self.post_wake_silence_rms_threshold
+
+                if speaking:
+                    silent_since = None
+                    continue
+
+                if elapsed < min_duration:
+                    continue
+
+                if silent_since is None:
+                    silent_since = time.time()
+                    continue
+
+                if time.time() - silent_since >= silence_seconds:
+                    break
+        finally:
+            proc.kill()
+            proc.wait(timeout=3)
+            if proc.stderr:
+                err = proc.stderr.read().decode("utf-8", errors="ignore").strip()
+                if err:
+                    logger.debug("parecord stderr (followup, %s): %s", source_name, err)
+
+        pcm = b"".join(frames)
+        if len(pcm) < 2048:
+            logger.error("Wake Word erkannt, aber Folgeaufnahme leer/zu klein für Source '%s'", source_name)
             wav_path.unlink(missing_ok=True)
             return None
+
+        with wave.open(str(wav_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(self.sample_rate)
+            wav.writeframes(pcm)
 
         if not wav_path.exists() or wav_path.stat().st_size < 2048:
             logger.error("Wake Word erkannt, aber Folgeaufnahme leer/zu klein für Source '%s'", source_name)
@@ -250,6 +321,7 @@ class VoicePipeline:
 
     def _handle_wake_event(self, event: dict[str, Any]) -> None:
         source_name = str(event["source_name"])
+        self._tts.beep()
         recording = self._record_followup(source_name)
         if recording is None:
             return
@@ -277,8 +349,10 @@ class VoicePipeline:
                     self._tts.speak(confirmation)
                 else:
                     logger.error("Smart-Home-Befehl fehlgeschlagen: %s", response.message)
+                    self._tts.speak(build_shelly_unavailable_message(response.message))
             except Exception as exc:
                 logger.exception("Shelly-Integration fehlgeschlagen: %s", exc)
+                self._tts.speak(build_shelly_unavailable_message(str(exc)))
             return
 
         try:
