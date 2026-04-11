@@ -268,7 +268,7 @@ services:
       WEBUI_ADMIN_NAME: ${OPEN_WEBUI_ADMIN_NAME}
     volumes:
       - open-webui:/app/backend/data
-      - ./open-webui/knowledge:/app/backend/data/knowledge-import:ro
+      - ./open-webui/knowledge:/app/backend/data/knowledge-import/user-content:ro
       - ./:/app/backend/data/knowledge-import/syn4ps3h0me-live:ro
 
 

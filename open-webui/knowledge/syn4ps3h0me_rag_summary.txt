@@ -5,6 +5,7 @@ Zielgruppe: Betreiber:innen des Projekts auf Raspberry Pi (lokales Smart Home + 
 HINWEIS (Live-RAG): Der komplette Projektordner wird per Linux Bind-Mount live nach
 /app/backend/data/knowledge-import/syn4ps3h0me-live in den Open-WebUI-Container eingebunden
 (ohne Kopien, Änderungen im Repo sind direkt sichtbar).
+Eigene User-Dokumente liegen parallel unter /app/backend/data/knowledge-import/user-content.
 
 ======================================================================
 1) PROJEKTZIEL UND NUTZEN
