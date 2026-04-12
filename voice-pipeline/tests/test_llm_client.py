@@ -218,3 +218,21 @@ def test_propose_tool_call_uses_json_fallback_when_native_tools_fail() -> None:
 
     assert call.name == "answer_with_llm"
     assert call.arguments["prompt"] == "hi"
+
+
+def test_propose_tool_call_uses_heuristic_when_json_fallback_invalid() -> None:
+    with patch.dict(os.environ, {"LLM_EXPECT_HAILO": "false"}, clear=False):
+        client = OllamaClient()
+
+    with patch.object(client, "_preload_status", object()):
+        client._native_tool_calling_available = False
+        with patch(
+            "app.integrations.llm_client.request.urlopen",
+            return_value=FakeResponse('{"message":{"content":"Bitte gib mehr Kontext."}}'),
+        ):
+            call, raw = client.propose_tool_call("Schalte Wohnzimmerlicht an.")
+
+    assert raw["fallback"] == "heuristic"
+    assert call.name == "switch_shelly_device"
+    assert call.arguments["room"] == "wohnzimmer"
+    assert call.arguments["action"] == "on"

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from urllib import error, request
@@ -124,6 +125,37 @@ class OllamaClient:
         if not isinstance(parsed, dict):
             raise RuntimeError("JSON-Inhalt ist kein Objekt")
         return parsed
+
+    @staticmethod
+    def _heuristic_tool_call_from_text(user_text: str) -> ToolCall:
+        text = user_text.lower().strip()
+        text = re.sub(r"[^\wäöüß ]+", " ", text)
+
+        action = None
+        if any(token in text for token in (" einschalten", " schalte ", " an")):
+            action = "on"
+        if any(token in text for token in (" ausschalten", " aus")):
+            action = "off"
+        if any(token in text for token in (" um ", "toggle")):
+            action = "toggle"
+
+        if action and any(token in text for token in ("licht", "lampe", "schalte")):
+            room = None
+            room_match = re.search(r"\b([a-zäöüß]+)licht\b", text)
+            if room_match:
+                room = room_match.group(1)
+            else:
+                known_room = re.search(r"\b(wohnzimmer|küche|kueche|bad|flur|schlafzimmer|büro|buero)\b", text)
+                if known_room:
+                    room = known_room.group(1)
+            if room:
+                return ToolCall(name="switch_shelly_device", arguments={"room": room, "action": action})
+            return ToolCall(
+                name="ask_for_clarification",
+                arguments={"question": "Welches Gerät oder welcher Raum soll geschaltet werden?", "missing_fields": ["room"]},
+            )
+
+        return ToolCall(name="answer_with_llm", arguments={"prompt": user_text})
 
     def preload(self) -> ModelPreloadStatus:
         if self._preload_status is not None and self._preload_status.ready:
@@ -258,7 +290,9 @@ class OllamaClient:
                 logger.warning("Function-Calling Request fehlgeschlagen (%s): %s", url, exc)
                 continue
 
-        raise RuntimeError(f"Function-Calling fehlgeschlagen: {last_error}")
+        logger.warning("Function-Calling komplett fehlgeschlagen, nutze heuristischen Fallback: %s", last_error)
+        fallback_call = self._heuristic_tool_call_from_text(user_text)
+        return fallback_call, {"fallback": "heuristic", "error": str(last_error)}
 
     def chat(self, prompt: str) -> str:
         payload = {
