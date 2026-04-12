@@ -1,7 +1,7 @@
+import json
 import os
-import unittest
-from urllib import error
 from unittest.mock import patch
+from urllib import error
 
 from app.integrations.llm_client import OllamaClient
 
@@ -20,33 +20,73 @@ class FakeResponse:
         return False
 
 
-class LlmClientTests(unittest.TestCase):
-    def test_candidate_url_adds_host_docker_internal_for_localhost(self) -> None:
-        with patch.dict(os.environ, {"LLM_BASE_URL": "http://127.0.0.1:8000"}, clear=False):
-            client = OllamaClient()
-            candidates = client._candidate_base_urls()
-        self.assertEqual(candidates[0], "http://127.0.0.1:8000")
-        self.assertIn("http://host.docker.internal:8000", candidates)
+def test_preload_requires_hailo_and_warmup() -> None:
+    with patch.dict(os.environ, {"LLM_BASE_URL": "http://127.0.0.1:8000", "LLM_EXPECT_HAILO": "true", "LLM_MODEL": "qwen2-1.5b-instruct-function-calling-v1"}, clear=False):
+        client = OllamaClient()
 
-    def test_chat_falls_back_to_host_docker_internal(self) -> None:
-        with patch.dict(os.environ, {"LLM_BASE_URL": "http://127.0.0.1:8000", "LLM_MODEL": "llama3.2:3b"}, clear=False):
-            client = OllamaClient()
+    calls = []
 
-        calls = []
+    def fake_urlopen(req, timeout=0):
+        calls.append(req.full_url)
+        if req.full_url.endswith("/hailo/v1/list"):
+            return FakeResponse('{"models":["qwen2-1.5b-instruct-function-calling-v1"]}')
+        return FakeResponse('{"message":{"tool_calls":[{"function":{"name":"ask_for_clarification","arguments":"{\\"question\\":\\"ok\\"}"}}]}}')
 
-        def fake_urlopen(req, timeout=0):
-            calls.append(req.full_url)
-            if "127.0.0.1" in req.full_url:
-                raise error.URLError("connection refused")
-            return FakeResponse('{"message": {"content": "Hallo!"}}')
+    with patch("app.integrations.llm_client.request.urlopen", side_effect=fake_urlopen):
+        status = client.preload()
 
-        with patch("app.integrations.llm_client.request.urlopen", side_effect=fake_urlopen):
-            response = client.chat("Erzähl einen Witz")
-
-        self.assertEqual(response, "Hallo!")
-        self.assertEqual(calls[0], "http://127.0.0.1:8000/api/chat")
-        self.assertEqual(calls[1], "http://host.docker.internal:8000/api/chat")
+    assert status.ready is True
+    assert any(url.endswith("/api/chat") for url in calls)
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_propose_tool_call_returns_first_tool() -> None:
+    with patch.dict(os.environ, {"LLM_EXPECT_HAILO": "false"}, clear=False):
+        client = OllamaClient()
+
+    with patch.object(client, "_preload_status", object()):
+        with patch("app.integrations.llm_client.request.urlopen", return_value=FakeResponse('{"message":{"tool_calls":[{"function":{"name":"answer_with_llm","arguments":{"prompt":"hi"}}}]}}')):
+            call, raw = client.propose_tool_call("Hallo")
+
+    assert call.name == "answer_with_llm"
+    assert raw["message"]["tool_calls"]
+
+
+def test_chat_falls_back_to_host_docker_internal() -> None:
+    with patch.dict(os.environ, {"LLM_BASE_URL": "http://127.0.0.1:8000", "LLM_EXPECT_HAILO": "false", "LLM_CHAT_MODEL": "llama3.2:3b"}, clear=False):
+        client = OllamaClient()
+
+    calls = []
+
+    def fake_urlopen(req, timeout=0):
+        calls.append(req.full_url)
+        if "127.0.0.1" in req.full_url:
+            raise error.URLError("connection refused")
+        return FakeResponse('{"message": {"content": "Hallo!"}}')
+
+    with patch("app.integrations.llm_client.request.urlopen", side_effect=fake_urlopen):
+        response = client.chat("Erzähl einen Witz")
+
+    assert response == "Hallo!"
+    assert calls[0] == "http://127.0.0.1:8000/api/chat"
+    assert calls[1] == "http://host.docker.internal:8000/api/chat"
+
+
+def test_chat_uses_chat_model_not_function_model() -> None:
+    with patch.dict(
+        os.environ,
+        {"LLM_EXPECT_HAILO": "false", "LLM_MODEL": "qwen2-1.5b-instruct-function-calling-v1", "LLM_CHAT_MODEL": "llama3.2:3b"},
+        clear=False,
+    ):
+        client = OllamaClient()
+
+    captured_body = {}
+
+    def fake_urlopen(req, timeout=0):
+        captured_body["payload"] = json.loads(req.data.decode("utf-8"))
+        return FakeResponse('{"message": {"content": "Hallo!"}}')
+
+    with patch("app.integrations.llm_client.request.urlopen", side_effect=fake_urlopen):
+        response = client.chat("Hi")
+
+    assert response == "Hallo!"
+    assert captured_body["payload"]["model"] == "llama3.2:3b"

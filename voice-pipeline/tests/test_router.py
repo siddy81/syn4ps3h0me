@@ -1,35 +1,28 @@
-import unittest
-
-from app.router import CommandRouter, RouteTarget, normalize_command
+from app.tools import ToolCall, validate_tool_call
 
 
-class RouterTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.router = CommandRouter()
-
-    def test_normalize_removes_wake_word(self) -> None:
-        self.assertEqual(normalize_command("Jarvis, erzähl mir einen Witz"), "erzähl mir einen Witz")
-
-    def test_routes_kitchen_light_off(self) -> None:
-        routed = self.router.route("Jarvis schalte das Licht in der Küche aus")
-        self.assertEqual(routed.target, RouteTarget.SHELLY)
-        assert routed.smart_home is not None
-        self.assertEqual(routed.smart_home.action, "off")
-        self.assertEqual(routed.smart_home.room, "kueche")
-        self.assertEqual(routed.smart_home.device, "licht")
-
-    def test_routes_general_prompt_to_llm(self) -> None:
-        routed = self.router.route("Jarvis, erklär mir Quantenphysik")
-        self.assertEqual(routed.target, RouteTarget.LLM)
-
-    def test_routes_compound_room_device_token_to_shelly(self) -> None:
-        routed = self.router.route("Jarvis, schalte das Wohnzimmerlicht aus")
-        self.assertEqual(routed.target, RouteTarget.SHELLY)
-        assert routed.smart_home is not None
-        self.assertEqual(routed.smart_home.action, "off")
-        self.assertEqual(routed.smart_home.room, "wohnzimmer")
-        self.assertEqual(routed.smart_home.device, "licht")
+def test_validate_switch_call_requires_action_and_selector():
+    call = ToolCall(name="switch_shelly_device", arguments={"room": "wohnzimmer", "action": "on"})
+    validated = validate_tool_call(call)
+    assert validated.arguments["action"] == "on"
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_validate_switch_call_rejects_without_selector():
+    call = ToolCall(name="switch_shelly_device", arguments={"action": "off"})
+    try:
+        validate_tool_call(call)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_validate_chat_tool():
+    call = ToolCall(name="answer_with_llm", arguments={"prompt": "Wie ist das Wetter?"})
+    validated = validate_tool_call(call)
+    assert validated.name == "answer_with_llm"
+
+
+def test_validate_clarification_tool():
+    call = ToolCall(name="ask_for_clarification", arguments={"question": "Welches Zimmer?"})
+    validated = validate_tool_call(call)
+    assert validated.name == "ask_for_clarification"

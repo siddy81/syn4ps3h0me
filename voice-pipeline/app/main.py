@@ -15,10 +15,13 @@ import numpy as np
 from openwakeword.model import Model
 
 from .error_messages import build_shelly_unavailable_message
+from .device_registry import DeviceRegistry
 from .integrations.llm_client import OllamaClient
 from .integrations.shelly_client import ShellyClient
-from .router import CommandRouter, RouteTarget
+from .orchestrator import FunctionCallingOrchestrator
+from .registry_api import RegistryApiServer
 from .stt_whisper import create_transcriber
+from .tools import ValidatedToolCall
 from .tts import TTSClient
 
 
@@ -50,9 +53,11 @@ class VoicePipeline:
         self._ready_announced = False
 
         self._transcriber = create_transcriber()
-        self._router = CommandRouter()
+        self._registry = DeviceRegistry()
+        self._registry_api = RegistryApiServer(self._registry)
         self._llm = OllamaClient()
-        self._shelly = ShellyClient()
+        self._orchestrator = FunctionCallingOrchestrator(llm=self._llm, registry=self._registry)
+        self._shelly = ShellyClient(registry=self._registry)
         self._tts = TTSClient()
 
         if self.whisper_preload:
@@ -61,6 +66,11 @@ class VoicePipeline:
                 self._transcriber.preload()
             except Exception as exc:
                 logger.warning("Whisper-Preload fehlgeschlagen, fallback auf lazy loading: %s", exc)
+
+        logger.info("Beginne LLM-Preload (Function Calling Modell=%s)", self._llm.model)
+        self._llm.preload()
+        logger.info("LLM-Preload abgeschlossen.")
+        self._registry_api.start()
 
     @staticmethod
     def _run_cmd(cmd: list[str]) -> tuple[int, str]:
@@ -335,31 +345,50 @@ class VoicePipeline:
         finally:
             recording.unlink(missing_ok=True)
 
-        routed = self._router.route(transcript)
-        logger.info("Normalisierter Befehl: %s", routed.normalized_text)
-        logger.info("Erkannter Intent / Routing-Ziel: %s", routed.target.value)
+        logger.info("User-Text: %s", transcript)
+        self._registry.mark_offline_devices()
 
-        if routed.target == RouteTarget.SHELLY and routed.smart_home is not None:
+        try:
+            planning = self._orchestrator.plan(transcript)
+            tool_call = planning.tool_call
+            logger.info("Validierter Tool-Call: %s", tool_call)
+            if planning.rejected_reason:
+                logger.warning("Abgelehnte Modellantwort: %s", planning.rejected_reason)
+        except Exception as exc:
+            logger.exception("Orchestrierung fehlgeschlagen: %s", exc)
+            tool_call = ValidatedToolCall(
+                name="ask_for_clarification",
+                arguments={"question": "Ich konnte den Befehl nicht verarbeiten. Bitte wiederhole ihn."},
+            )
+
+        if tool_call.name == "switch_shelly_device":
             try:
-                response = self._shelly.send(routed.smart_home)
+                device = self._registry.get_device(str(tool_call.arguments.get("device_id")))
+                if device is None:
+                    self._tts.speak("Das angeforderte Gerät ist nicht in der Registry.")
+                    return
+                response = self._shelly.send_switch(device=device, action=str(tool_call.arguments["action"]))
                 if response.success:
-                    label = routed.smart_home.room or routed.smart_home.device or "Gerät"
-                    confirmation = f"{label} ausgeschaltet" if routed.smart_home.action == "off" else f"{label} eingeschaltet"
-                    logger.info("Smart-Home-Befehl erfolgreich: %s", response.message)
+                    confirmation = f"{response.device_id} {'ausgeschaltet' if tool_call.arguments['action'] == 'off' else 'eingeschaltet'}"
+                    logger.info("Resultierende Aktion: %s", confirmation)
                     self._tts.speak(confirmation)
                 else:
-                    logger.error("Smart-Home-Befehl fehlgeschlagen: %s", response.message)
                     self._tts.speak(build_shelly_unavailable_message(response.message))
             except Exception as exc:
-                logger.exception("Shelly-Integration fehlgeschlagen: %s", exc)
+                logger.exception("Execution fehlgeschlagen: %s", exc)
                 self._tts.speak(build_shelly_unavailable_message(str(exc)))
             return
 
+        if tool_call.name == "ask_for_clarification":
+            self._tts.speak(str(tool_call.arguments["question"]))
+            return
+
         try:
-            llm_response = self._llm.chat(routed.normalized_text)
+            llm_response = self._llm.chat(str(tool_call.arguments["prompt"]))
+            logger.info("Resultierende Aktion: answer_with_llm")
             self._tts.speak(llm_response)
         except Exception as exc:
-            logger.exception("LLM-Integration fehlgeschlagen: %s", exc)
+            logger.exception("LLM-Chat fehlgeschlagen: %s", exc)
 
 
 if __name__ == "__main__":

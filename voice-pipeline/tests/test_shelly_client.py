@@ -1,33 +1,36 @@
 import json
 import os
-import unittest
 from unittest.mock import patch
 
+from app.device_registry import DeviceRegistry
 from app.integrations.shelly_client import ShellyClient
-from app.router import SmartHomeCommand
 
 
-class ShellyClientTests(unittest.TestCase):
-    def test_resolve_target_by_room_alias(self) -> None:
-        mapping = [
-            {
-                "id": "kueche_lampe1",
-                "room": "kueche",
-                "group": "kueche",
-                "aliases": ["küche", "kueche", "lampe1"],
-                "base_url": "http://kueche-lampe1.local",
-                "command_path": "/script/light-control",
-            }
-        ]
-        with patch.dict(os.environ, {"SHELLY_DEVICE_MAP_JSON": json.dumps(mapping)}, clear=False):
-            client = ShellyClient()
+class FakeResponse:
+    def __init__(self, body: str, status: int = 200):
+        self._body = body.encode("utf-8")
+        self.status = status
 
-        cmd = SmartHomeCommand(action="off", room="kueche", device="licht", raw="schalte küche licht aus")
-        target = client._resolve_target(cmd)
-        self.assertIsNotNone(target)
-        assert target is not None
-        self.assertEqual(target.id, "kueche_lampe1")
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_send_switch_uses_resolved_device() -> None:
+    mapping = [{"id": "wz_lampe", "room": "wohnzimmer", "group": "wz", "aliases": ["wohnzimmerlicht"], "base_url": "http://wz-lampe.local", "command_path": "/script/light-control"}]
+    with patch.dict(os.environ, {"SHELLY_DEVICE_MAP_JSON": "", "SHELLY_DEVICE_MAP_FILE": "/tmp/nonexistent"}, clear=False):
+        registry = DeviceRegistry()
+        registry.register_device({"id": "wz_lampe", "base_url": "http://wz-lampe.local", "room": "wohnzimmer", "group": "wz", "aliases": ["wohnzimmerlicht"], "registration_token": os.getenv("DEVICE_REGISTRATION_TOKEN", "change-me")}, client_ip="192.168.1.77")
+        client = ShellyClient(registry=registry)
+
+    device = registry.get_device("wz_lampe")
+    assert device is not None
+    with patch("app.integrations.shelly_client.request.urlopen", return_value=FakeResponse('{"ok":true,"message":"done"}')):
+        response = client.send_switch(device=device, action="on")
+    assert response.success is True
+    assert response.device_id == "wz_lampe"

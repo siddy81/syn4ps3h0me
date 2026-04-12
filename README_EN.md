@@ -157,11 +157,14 @@ The script automates these steps:
 - Check containers with `docker compose ps`.
 - If group permissions are new: log out and back in once.
 
-### Voice pipeline: Wake word → Whisper → Router → LLM/Shelly
-The voice pipeline uses wake-word detection (Jarvis), transcribes the following command locally via `openai/whisper-base`, then routes based on rules:
+### Voice pipeline: Wake word → Whisper → Function Calling → Validation → Execution
+The voice pipeline uses wake-word detection (Jarvis), transcribes locally, then sends the text to `qwen2-1.5b-instruct-function-calling-v1` as a **strict function-calling intent layer**:
 
-- Smart-home commands (e.g. “turn off the kitchen light”) → Shelly REST
-- all other commands → local LLM `llama3.2:3b`
+- The model only receives user text + whitelisted tool schemas (`switch_shelly_device`, `answer_with_llm`, `ask_for_clarification`)
+- The model must **not** generate direct REST/MQTT/network commands
+- Host code validates tool-calls before execution
+- Missing/ambiguous information is handled with `ask_for_clarification`
+- Device execution is resolved via a central Device Registry and executed in the host execution layer
 
 Recommended `.env` entries:
 ```env
@@ -192,14 +195,19 @@ VOICE_WHISPER_PRELOAD=true
 
 # LLM
 VOICE_LLM_BASE_URL=http://host.docker.internal:8000
-VOICE_LLM_MODEL=llama3.2:3b
+VOICE_LLM_MODEL=qwen2-1.5b-instruct-function-calling-v1
+VOICE_LLM_CHAT_MODEL=llama3.2:3b
 VOICE_LLM_TIMEOUT_SECONDS=45
+VOICE_LLM_EXPECT_HAILO=true
 
 # Shelly routing
 SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json
 SHELLY_DEVICE_MAP_JSON=
 SHELLY_DEFAULT_COMMAND_PATH=/script/light-control
 SHELLY_TIMEOUT_SECONDS=5
+DEVICE_REGISTRATION_TOKEN=CHANGE_ME
+DEVICE_HEARTBEAT_TIMEOUT_SEC=120
+DEVICE_REGISTRY_PORT=8091
 
 # TTS
 VOICE_TTS_SHELL_COMMAND=
@@ -242,9 +250,10 @@ The reusable Shelly script is located at `shelly_script/shelly_1pm_control.js`.
 Quick flow:
 1. Open Shelly Web UI → **Scripts**
 2. Create new script, paste content from file (same script on every target Shelly)
-3. Start script
-4. Set a unique DNS/IP entry for each Shelly in `shelly_devices.json`
-5. Test with: `http://<SHELLY-IP>/script/light-control?action=off`
+3. Configure `CONFIG`: `device_id`, `room`, `group`, `aliases`, `registration_token`, `central_base_url`
+4. Start script (local switching still works if registration fails)
+5. Device auto-registers via `POST /api/devices/register` and sends heartbeat to `POST /api/devices/heartbeat`
+6. Test with: `http://<SHELLY-IP>/script/light-control?action=off`
 
 Response is JSON with `ok=true|false` and `message`, which is evaluated by the Python pipeline.
 

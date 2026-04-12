@@ -24,7 +24,9 @@ SERVICE_FILE="/etc/systemd/system/hailo-ollama.service"
 DEB_URL="https://dev-public.hailo.ai/2025_12/Hailo10/hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEB_FILE="hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEFAULT_LLM_MODEL="llama3.2:3b"
+DEFAULT_LLM_FUNCTION_CALLING_MODEL="qwen2-1.5b-instruct-function-calling-v1"
 ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
+ACTIVE_LLM_FUNCTION_CALLING_MODEL="${DEFAULT_LLM_FUNCTION_CALLING_MODEL}"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
 HAILO_TARGET_ARCH="${HAILO_TARGET_ARCH:-hailo10h}"
@@ -723,8 +725,7 @@ ensure_default_llm_model() {
   log "Prüfe, ob Standardmodell ${DEFAULT_LLM_MODEL} verfügbar ist ..."
   local tags_json
   if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
-    warn "Konnte Modellliste nicht über http://localhost:8000/api/tags lesen. Überspringe Standardmodell-Prüfung."
-    return
+    fail "Konnte Modellliste nicht über http://localhost:8000/api/tags lesen."
   fi
 
   if grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${DEFAULT_LLM_MODEL}\"|\"${DEFAULT_LLM_MODEL}\"" <<<"${tags_json}"; then
@@ -741,21 +742,55 @@ ensure_default_llm_model() {
     -d "{ \"model\": \"${DEFAULT_LLM_MODEL}\", \"stream\" : true }" >/dev/null &
   local pull_pid=$!
   if ! wait_with_progress "${pull_pid}" "[INFO]  Download läuft, bitte warten" 2; then
-    warn "Download von ${DEFAULT_LLM_MODEL} fehlgeschlagen. Installation läuft weiter; bitte Modell ggf. manuell laden."
-    return
+    fail "Download von ${DEFAULT_LLM_MODEL} fehlgeschlagen."
   fi
   log "Model-Download abgeschlossen."
 
   if curl --silent --fail \
       "http://localhost:8000/api/chat" \
       -H "Content-Type: application/json" \
-      -d "{\"model\":\"${DEFAULT_LLM_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Translate to French: The cat is on the table.\"}]}" >/dev/null; then
+      -d "{\"model\":\"${DEFAULT_LLM_MODEL}\",\"stream\":false,\"messages\":[{\"role\":\"system\",\"content\":\"Function calling warmup\"},{\"role\":\"user\",\"content\":\"Warmup\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"ask_for_clarification\",\"parameters\":{\"type\":\"object\",\"properties\":{\"question\":{\"type\":\"string\"}},\"required\":[\"question\"]}}}],\"tool_choice\":{\"type\":\"function\",\"function\":{\"name\":\"ask_for_clarification\"}}}" >/dev/null; then
     ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
     log "Modelltest über /api/chat erfolgreich."
     return
   fi
 
-  warn "Modelltest über /api/chat ist fehlgeschlagen. Bitte Modell-/Backend-Status prüfen."
+  fail "Modelltest über /api/chat ist fehlgeschlagen."
+}
+
+ensure_default_function_calling_model() {
+  log "Prüfe, ob Function-Calling-Modell ${DEFAULT_LLM_FUNCTION_CALLING_MODEL} verfügbar ist ..."
+  local tags_json
+  if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
+    fail "Konnte Modellliste nicht über http://localhost:8000/api/tags lesen."
+  fi
+
+  if grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${DEFAULT_LLM_FUNCTION_CALLING_MODEL}\"|\"${DEFAULT_LLM_FUNCTION_CALLING_MODEL}\"" <<<"${tags_json}"; then
+    log "Function-Calling-Modell ${DEFAULT_LLM_FUNCTION_CALLING_MODEL} ist bereits vorhanden."
+    ACTIVE_LLM_FUNCTION_CALLING_MODEL="${DEFAULT_LLM_FUNCTION_CALLING_MODEL}"
+    return
+  fi
+
+  log "Lade Function-Calling-Modell ${DEFAULT_LLM_FUNCTION_CALLING_MODEL} über die lokale Hailo-Ollama API ..."
+  curl --silent --show-error \
+    "http://localhost:8000/api/pull" \
+    -H "Content-Type: application/json" \
+    -d "{ \"model\": \"${DEFAULT_LLM_FUNCTION_CALLING_MODEL}\", \"stream\" : true }" >/dev/null &
+  local pull_pid=$!
+  if ! wait_with_progress "${pull_pid}" "[INFO]  Download läuft, bitte warten" 2; then
+    fail "Download von ${DEFAULT_LLM_FUNCTION_CALLING_MODEL} fehlgeschlagen."
+  fi
+
+  if curl --silent --fail \
+      "http://localhost:8000/api/chat" \
+      -H "Content-Type: application/json" \
+      -d "{\"model\":\"${DEFAULT_LLM_FUNCTION_CALLING_MODEL}\",\"stream\":false,\"messages\":[{\"role\":\"system\",\"content\":\"Function calling warmup\"},{\"role\":\"user\",\"content\":\"Warmup\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"ask_for_clarification\",\"parameters\":{\"type\":\"object\",\"properties\":{\"question\":{\"type\":\"string\"}},\"required\":[\"question\"]}}}],\"tool_choice\":{\"type\":\"function\",\"function\":{\"name\":\"ask_for_clarification\"}}}" >/dev/null; then
+    ACTIVE_LLM_FUNCTION_CALLING_MODEL="${DEFAULT_LLM_FUNCTION_CALLING_MODEL}"
+    log "Function-Calling Modelltest über /api/chat erfolgreich."
+    return
+  fi
+
+  fail "Function-Calling Modelltest über /api/chat ist fehlgeschlagen."
 }
 
 
@@ -782,8 +817,12 @@ ensure_voice_env_defaults() {
     "VOICE_WHISPER_LANGUAGE=de"
     "VOICE_WHISPER_CACHE_DIR=/home/siddy/.cache/huggingface"
     "VOICE_LLM_BASE_URL=http://host.docker.internal:8000"
-    "VOICE_LLM_MODEL=llama3.2:3b"
+    "VOICE_LLM_MODEL=${ACTIVE_LLM_FUNCTION_CALLING_MODEL}"
+    "VOICE_LLM_CHAT_MODEL=${ACTIVE_LLM_MODEL}"
     "VOICE_LLM_TIMEOUT_SECONDS=45"
+    "VOICE_LLM_EXPECT_HAILO=true"
+    "DEVICE_REGISTRATION_TOKEN=CHANGE_ME"
+    "DEVICE_HEARTBEAT_TIMEOUT_SEC=120"
     "SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json"
     "SHELLY_DEVICE_MAP_JSON="
     "SHELLY_DEFAULT_COMMAND_PATH=/script/light-control"
@@ -1027,6 +1066,7 @@ main() {
     enable_and_start_hailo_service
     wait_for_hailo_ollama
     ensure_default_llm_model
+    ensure_default_function_calling_model
   fi
 
   if [[ "${MODULE_VOICE}" == "true" || "${MODULE_LLM_CHAT}" == "true" ]]; then
