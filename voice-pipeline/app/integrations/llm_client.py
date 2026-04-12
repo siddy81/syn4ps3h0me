@@ -35,6 +35,7 @@ class OllamaClient:
         self.timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "45"))
         self.expect_hailo = os.getenv("LLM_EXPECT_HAILO", "true").lower() == "true"
         self.pull_on_preload_miss = os.getenv("LLM_PULL_ON_PRELOAD_MISS", "true").lower() == "true"
+        self.strict_hailo_list = os.getenv("LLM_STRICT_HAILO_LIST", "false").lower() == "true"
         self._preload_status: ModelPreloadStatus | None = None
 
     def _candidate_base_urls(self) -> list[str]:
@@ -126,10 +127,15 @@ class OllamaClient:
                         self._post_json_or_ndjson(f"{base_url}/api/pull", {"model": self.model, "stream": False})
                         list_payload = self._get_json(f"{base_url}/hailo/v1/list")
                         if not self._model_present_in_list(list_payload):
-                            raise RuntimeError(
-                                f"Modell {self.model} trotz /api/pull nicht in hailo/v1/list vorhanden"
-                            )
-                    hailo_runtime = "hailo"
+                            msg = f"Modell {self.model} trotz /api/pull nicht in hailo/v1/list vorhanden"
+                            if self.strict_hailo_list:
+                                raise RuntimeError(msg)
+                            logger.warning("%s; fahre im nicht-strikten Modus fort.", msg)
+                            hailo_runtime = "unknown"
+                        else:
+                            hailo_runtime = "hailo"
+                    else:
+                        hailo_runtime = "hailo"
 
                 warmup_payload = {
                     "model": self.model,

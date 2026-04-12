@@ -792,7 +792,10 @@ ensure_default_function_calling_model() {
       log "Function-Calling Modelltest über /api/chat erfolgreich und Modell ist in /hailo/v1/list sichtbar."
       return
     fi
-    fail "Function-Calling Modell antwortet über /api/chat, ist aber nicht in /hailo/v1/list sichtbar (kein akzeptierter Hailo-Ready-Zustand)."
+    warn "Function-Calling Modell antwortet über /api/chat, ist aber nicht in /hailo/v1/list sichtbar."
+    warn "Installation wird fortgesetzt. Striktes Verhalten kann via VOICE_LLM_STRICT_HAILO_LIST=true aktiviert werden."
+    ACTIVE_LLM_FUNCTION_CALLING_MODEL="${DEFAULT_LLM_FUNCTION_CALLING_MODEL}"
+    return
   fi
 
   local list_payload=""
@@ -836,6 +839,7 @@ ensure_voice_env_defaults() {
     "VOICE_LLM_TIMEOUT_SECONDS=45"
     "VOICE_LLM_EXPECT_HAILO=true"
     "VOICE_LLM_PULL_ON_PRELOAD_MISS=true"
+    "VOICE_LLM_STRICT_HAILO_LIST=false"
     "DEVICE_REGISTRATION_TOKEN=CHANGE_ME"
     "DEVICE_HEARTBEAT_TIMEOUT_SEC=120"
     "SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json"

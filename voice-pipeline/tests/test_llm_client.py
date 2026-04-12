@@ -174,3 +174,31 @@ def test_preload_handles_ndjson_pull_response() -> None:
         status = client.preload()
 
     assert status.ready is True
+
+
+def test_preload_non_strict_mode_allows_missing_hailo_list_entry_after_pull() -> None:
+    with patch.dict(
+        os.environ,
+        {
+            "LLM_BASE_URL": "http://127.0.0.1:8000",
+            "LLM_EXPECT_HAILO": "true",
+            "LLM_PULL_ON_PRELOAD_MISS": "true",
+            "LLM_STRICT_HAILO_LIST": "false",
+            "LLM_MODEL": "qwen2-1.5b-instruct-function-calling-v1",
+        },
+        clear=False,
+    ):
+        client = OllamaClient()
+
+    def fake_urlopen(req, timeout=0):
+        if req.full_url.endswith("/hailo/v1/list"):
+            return FakeResponse('{"models":[]}')
+        if req.full_url.endswith("/api/pull"):
+            return FakeResponse('{"status":"success"}')
+        return FakeResponse('{"message":{"tool_calls":[{"function":{"name":"ask_for_clarification","arguments":"{\\"question\\":\\"ok\\"}"}}]}}')
+
+    with patch("app.integrations.llm_client.request.urlopen", side_effect=fake_urlopen):
+        status = client.preload()
+
+    assert status.ready is True
+    assert status.hailo_runtime == "unknown"
