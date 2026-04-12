@@ -34,6 +34,7 @@ class OllamaClient:
         self.chat_model = os.getenv("LLM_CHAT_MODEL", "llama3.2:3b")
         self.timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "45"))
         self.expect_hailo = os.getenv("LLM_EXPECT_HAILO", "true").lower() == "true"
+        self.pull_on_preload_miss = os.getenv("LLM_PULL_ON_PRELOAD_MISS", "true").lower() == "true"
         self._preload_status: ModelPreloadStatus | None = None
 
     def _candidate_base_urls(self) -> list[str]:
@@ -53,11 +54,55 @@ class OllamaClient:
             response_text = resp.read().decode("utf-8", errors="replace")
         return json.loads(response_text)
 
+    def _post_json_or_ndjson(self, url: str, payload: dict) -> dict:
+        body = json.dumps(payload).encode("utf-8")
+        req = request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        with request.urlopen(req, timeout=self.timeout) as resp:
+            response_text = resp.read().decode("utf-8", errors="replace").strip()
+        if not response_text:
+            return {}
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            lines = [line.strip() for line in response_text.splitlines() if line.strip()]
+            if not lines:
+                return {}
+            try:
+                return json.loads(lines[-1])
+            except json.JSONDecodeError:
+                logger.warning("Konnte /api/pull Antwort nicht als JSON parsen, fahre mit Re-Check fort.")
+                return {}
+
     def _get_json(self, url: str) -> dict:
         req = request.Request(url, method="GET")
         with request.urlopen(req, timeout=self.timeout) as resp:
             response_text = resp.read().decode("utf-8", errors="replace")
         return json.loads(response_text)
+
+    @staticmethod
+    def _model_matches(available_name: str, expected_model: str) -> bool:
+        normalized = available_name.strip()
+        return (
+            normalized == expected_model
+            or normalized.startswith(f"{expected_model}:")
+            or normalized.endswith(f"/{expected_model}")
+            or normalized.endswith(f"/{expected_model}:latest")
+        )
+
+    def _model_present_in_list(self, list_payload: dict) -> bool:
+        if self.model in json.dumps(list_payload):
+            return True
+        models = list_payload.get("models")
+        if not isinstance(models, list):
+            return False
+        for item in models:
+            if isinstance(item, str) and self._model_matches(item, self.model):
+                return True
+            if isinstance(item, dict):
+                name = item.get("name")
+                if isinstance(name, str) and self._model_matches(name, self.model):
+                    return True
+        return False
 
     def preload(self) -> ModelPreloadStatus:
         if self._preload_status is not None and self._preload_status.ready:
@@ -71,8 +116,19 @@ class OllamaClient:
                 hailo_runtime = "unknown"
                 if self.expect_hailo:
                     list_payload = self._get_json(f"{base_url}/hailo/v1/list")
-                    if self.model not in json.dumps(list_payload):
-                        raise RuntimeError(f"Modell {self.model} nicht in hailo/v1/list vorhanden")
+                    if not self._model_present_in_list(list_payload):
+                        if not self.pull_on_preload_miss:
+                            raise RuntimeError(f"Modell {self.model} nicht in hailo/v1/list vorhanden")
+                        logger.warning(
+                            "Modell %s nicht in /hailo/v1/list gefunden. Versuche Pull über /api/pull.",
+                            self.model,
+                        )
+                        self._post_json_or_ndjson(f"{base_url}/api/pull", {"model": self.model, "stream": False})
+                        list_payload = self._get_json(f"{base_url}/hailo/v1/list")
+                        if not self._model_present_in_list(list_payload):
+                            raise RuntimeError(
+                                f"Modell {self.model} trotz /api/pull nicht in hailo/v1/list vorhanden"
+                            )
                     hailo_runtime = "hailo"
 
                 warmup_payload = {

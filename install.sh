@@ -785,9 +785,14 @@ ensure_default_function_calling_model() {
       "http://localhost:8000/api/chat" \
       -H "Content-Type: application/json" \
       -d "{\"model\":\"${DEFAULT_LLM_FUNCTION_CALLING_MODEL}\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"Warmup: antworte mit ok.\"}]}" >/dev/null; then
-    ACTIVE_LLM_FUNCTION_CALLING_MODEL="${DEFAULT_LLM_FUNCTION_CALLING_MODEL}"
-    log "Function-Calling Modelltest über /api/chat erfolgreich."
-    return
+    local list_payload_after_warmup=""
+    list_payload_after_warmup="$(curl --silent --show-error --fail "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
+    if [[ -n "${list_payload_after_warmup}" ]] && grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${DEFAULT_LLM_FUNCTION_CALLING_MODEL}\"|\"${DEFAULT_LLM_FUNCTION_CALLING_MODEL}\"" <<<"${list_payload_after_warmup}"; then
+      ACTIVE_LLM_FUNCTION_CALLING_MODEL="${DEFAULT_LLM_FUNCTION_CALLING_MODEL}"
+      log "Function-Calling Modelltest über /api/chat erfolgreich und Modell ist in /hailo/v1/list sichtbar."
+      return
+    fi
+    fail "Function-Calling Modell antwortet über /api/chat, ist aber nicht in /hailo/v1/list sichtbar (kein akzeptierter Hailo-Ready-Zustand)."
   fi
 
   local list_payload=""
@@ -830,6 +835,7 @@ ensure_voice_env_defaults() {
     "VOICE_LLM_CHAT_MODEL=${ACTIVE_LLM_MODEL}"
     "VOICE_LLM_TIMEOUT_SECONDS=45"
     "VOICE_LLM_EXPECT_HAILO=true"
+    "VOICE_LLM_PULL_ON_PRELOAD_MISS=true"
     "DEVICE_REGISTRATION_TOKEN=CHANGE_ME"
     "DEVICE_HEARTBEAT_TIMEOUT_SEC=120"
     "SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json"

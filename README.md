@@ -202,6 +202,7 @@ VOICE_LLM_MODEL=qwen2-1.5b-instruct-function-calling-v1
 VOICE_LLM_CHAT_MODEL=llama3.2:3b
 VOICE_LLM_TIMEOUT_SECONDS=45
 VOICE_LLM_EXPECT_HAILO=true
+VOICE_LLM_PULL_ON_PRELOAD_MISS=true
 
 # Shelly-Routing
 SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json
