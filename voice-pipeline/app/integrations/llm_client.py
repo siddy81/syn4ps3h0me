@@ -37,6 +37,7 @@ class OllamaClient:
         self.pull_on_preload_miss = os.getenv("LLM_PULL_ON_PRELOAD_MISS", "true").lower() == "true"
         self.strict_hailo_list = os.getenv("LLM_STRICT_HAILO_LIST", "false").lower() == "true"
         self._preload_status: ModelPreloadStatus | None = None
+        self._native_tool_calling_available = True
 
     def _candidate_base_urls(self) -> list[str]:
         primary = self.base_url.rstrip("/")
@@ -51,8 +52,12 @@ class OllamaClient:
     def _post_json(self, url: str, payload: dict) -> dict:
         body = json.dumps(payload).encode("utf-8")
         req = request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
-        with request.urlopen(req, timeout=self.timeout) as resp:
-            response_text = resp.read().decode("utf-8", errors="replace")
+        try:
+            with request.urlopen(req, timeout=self.timeout) as resp:
+                response_text = resp.read().decode("utf-8", errors="replace")
+        except error.HTTPError as exc:
+            err_body = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+            raise RuntimeError(f"HTTP {exc.code} bei {url}: {err_body[:300]}") from exc
         return json.loads(response_text)
 
     def _post_json_or_ndjson(self, url: str, payload: dict) -> dict:
@@ -105,6 +110,21 @@ class OllamaClient:
                     return True
         return False
 
+    @staticmethod
+    def _extract_first_json_object(content: str) -> dict:
+        text = content.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            text = text.replace("json\n", "", 1).strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise RuntimeError("Kein JSON-Objekt in Modellantwort gefunden")
+        parsed = json.loads(text[start : end + 1])
+        if not isinstance(parsed, dict):
+            raise RuntimeError("JSON-Inhalt ist kein Objekt")
+        return parsed
+
     def preload(self) -> ModelPreloadStatus:
         if self._preload_status is not None and self._preload_status.ready:
             return self._preload_status
@@ -144,7 +164,18 @@ class OllamaClient:
                     "tools": allowed_tools_schema(),
                     "tool_choice": {"type": "function", "function": {"name": "ask_for_clarification"}},
                 }
-                self._post_json(f"{base_url}/api/chat", warmup_payload)
+                try:
+                    self._post_json(f"{base_url}/api/chat", warmup_payload)
+                    self._native_tool_calling_available = True
+                except Exception:
+                    fallback_payload = {
+                        "model": self.model,
+                        "stream": False,
+                        "messages": [{"role": "user", "content": "Warmup: antworte nur mit ok."}],
+                    }
+                    self._post_json(f"{base_url}/api/chat", fallback_payload)
+                    self._native_tool_calling_available = False
+                    logger.warning("Native Tool-Calling Warmup fehlgeschlagen; Fallback-Warmup ohne Tools aktiv.")
                 duration_ms = int((time.monotonic() - started) * 1000)
                 self._preload_status = ModelPreloadStatus(True, hailo_runtime, duration_ms, True)
                 logger.info(
@@ -175,25 +206,54 @@ class OllamaClient:
             "messages": messages,
             "tools": allowed_tools_schema(),
         }
+        fallback_payload = {
+            "model": self.model,
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": SYSTEM_INSTRUCTION},
+                {
+                    "role": "system",
+                    "content": (
+                        "Falls Tool-Calling technisch nicht verfügbar ist, antworte ausschließlich mit JSON im Format "
+                        '{"name":"<tool_name>","arguments":{...}} ohne weitere Texte.'
+                    ),
+                },
+                {"role": "user", "content": user_text},
+            ],
+        }
 
         last_error: Exception | None = None
         for base_url in self._candidate_base_urls():
             url = f"{base_url}/api/chat"
             try:
-                raw = self._post_json(url, payload)
-                message = raw.get("message", {})
-                tool_calls = message.get("tool_calls") or []
-                if not tool_calls:
-                    raise RuntimeError("Modell lieferte keinen Tool-Call")
-                first = tool_calls[0]
-                function_data = first.get("function", {})
-                name = function_data.get("name")
-                args_raw = function_data.get("arguments", {})
-                args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+                if self._native_tool_calling_available:
+                    raw = self._post_json(url, payload)
+                    message = raw.get("message", {})
+                    tool_calls = message.get("tool_calls") or []
+                    if not tool_calls:
+                        raise RuntimeError("Modell lieferte keinen Tool-Call")
+                    first = tool_calls[0]
+                    function_data = first.get("function", {})
+                    name = function_data.get("name")
+                    args_raw = function_data.get("arguments", {})
+                    args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+                    if not isinstance(args, dict):
+                        raise RuntimeError("Tool-Arguments sind kein Objekt")
+                    return ToolCall(name=name, arguments=args), raw
+
+                raw = self._post_json(url, fallback_payload)
+                content = str(raw.get("message", {}).get("content", "")).strip()
+                parsed = self._extract_first_json_object(content)
+                name = parsed.get("name")
+                args = parsed.get("arguments", {})
                 if not isinstance(args, dict):
-                    raise RuntimeError("Tool-Arguments sind kein Objekt")
+                    raise RuntimeError("Fallback-Tool-Arguments sind kein Objekt")
                 return ToolCall(name=name, arguments=args), raw
             except (error.URLError, json.JSONDecodeError, RuntimeError) as exc:
+                if self._native_tool_calling_available:
+                    self._native_tool_calling_available = False
+                    logger.warning("Tool-Calling API nicht verfügbar; wechsle auf JSON-Fallback (%s).", exc)
+                    continue
                 last_error = exc
                 logger.warning("Function-Calling Request fehlgeschlagen (%s): %s", url, exc)
                 continue

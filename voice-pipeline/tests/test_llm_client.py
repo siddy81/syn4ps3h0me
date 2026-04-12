@@ -202,3 +202,19 @@ def test_preload_non_strict_mode_allows_missing_hailo_list_entry_after_pull() ->
 
     assert status.ready is True
     assert status.hailo_runtime == "unknown"
+
+
+def test_propose_tool_call_uses_json_fallback_when_native_tools_fail() -> None:
+    with patch.dict(os.environ, {"LLM_EXPECT_HAILO": "false"}, clear=False):
+        client = OllamaClient()
+
+    with patch.object(client, "_preload_status", object()):
+        client._native_tool_calling_available = False
+        with patch(
+            "app.integrations.llm_client.request.urlopen",
+            return_value=FakeResponse('{"message":{"content":"{\\"name\\":\\"answer_with_llm\\",\\"arguments\\":{\\"prompt\\":\\"hi\\"}}"}}'),
+        ):
+            call, _raw = client.propose_tool_call("Hallo")
+
+    assert call.name == "answer_with_llm"
+    assert call.arguments["prompt"] == "hi"
