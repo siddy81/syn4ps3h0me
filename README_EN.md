@@ -158,7 +158,7 @@ The script automates these steps:
 - If group permissions are new: log out and back in once.
 
 ### Voice pipeline: Wake word → Whisper → Function Calling → Validation → Execution
-The voice pipeline uses wake-word detection (Jarvis), transcribes locally, then sends the text to `qwen2-1.5b-instruct-function-calling-v1` as a **strict function-calling intent layer**:
+The voice pipeline uses wake-word detection (default `Nova`, optionally multiple keywords like `Nova` + `Jarvis`), transcribes locally, then sends the text to `qwen2-1.5b-instruct-function-calling-v1` as a **strict function-calling intent layer**:
 
 - The model only receives user text + whitelisted tool schemas (`switch_shelly_device`, `answer_with_llm`, `ask_for_clarification`)
 - The model must **not** generate direct REST/MQTT/network commands
@@ -173,8 +173,10 @@ VOICE_HOST_UID=1000
 VOICE_HOST_GID=1000
 
 # Wake word
-VOICE_WAKEWORD_MODEL=jarvis
+VOICE_WAKEWORD_MODEL=hey_nova
+VOICE_WAKEWORD_MODELS=hey_nova,hey_jarvis
 VOICE_WAKEWORD_MODEL_PATH=
+VOICE_WAKEWORD_MODEL_PATHS=
 VOICE_WAKE_WORD_THRESHOLD=0.5
 VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0
 VOICE_POST_WAKE_RECORD_SECONDS=6

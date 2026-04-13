@@ -41,8 +41,12 @@ class VoicePipeline:
         self.post_wake_record_min_seconds = float(os.getenv("POST_WAKE_MIN_RECORD_SECONDS", "0.45"))
         self.post_wake_silence_seconds = float(os.getenv("POST_WAKE_SILENCE_SECONDS", "0.35"))
         self.post_wake_silence_rms_threshold = float(os.getenv("POST_WAKE_SILENCE_RMS_THRESHOLD", "550"))
-        self.wake_model_name = os.getenv("WAKEWORD_MODEL", "hey_jarvis")
+        wakeword_models_env = os.getenv("WAKEWORD_MODELS", os.getenv("WAKEWORD_MODEL", "hey_nova"))
+        self.wake_model_names = [w.strip() for w in wakeword_models_env.split(",") if w.strip()]
+        if not self.wake_model_names:
+            self.wake_model_names = ["hey_nova"]
         self.wake_model_path = os.getenv("WAKEWORD_MODEL_PATH", "").strip()
+        self.wake_model_paths = [p.strip() for p in os.getenv("WAKEWORD_MODEL_PATHS", "").split(",") if p.strip()]
         self.device_refresh_seconds = int(os.getenv("AUDIO_DEVICE_REFRESH_SECONDS", "30"))
         self.whisper_preload = os.getenv("WHISPER_PRELOAD", "true").lower() == "true"
 
@@ -129,9 +133,20 @@ class VoicePipeline:
                 self._model = Model(wakeword_model_paths=[str(path)])
                 logger.info("Wakeword über Model-Path geladen: %s", path)
                 return True
+            if self.wake_model_paths:
+                resolved_paths: list[str] = []
+                for p in self.wake_model_paths:
+                    path = Path(p)
+                    if not path.exists():
+                        logger.error("WAKEWORD_MODEL_PATHS enthält ungültigen Pfad: %s", p)
+                        return False
+                    resolved_paths.append(str(path))
+                self._model = Model(wakeword_model_paths=resolved_paths)
+                logger.info("Wakeword über Model-Paths geladen: %s", ", ".join(resolved_paths))
+                return True
 
-            self._model = Model(wakeword_models=[self.wake_model_name])
-            logger.info("Wakeword über Modellname geladen: %s", self.wake_model_name)
+            self._model = Model(wakeword_models=self.wake_model_names)
+            logger.info("Wakeword über Modellnamen geladen: %s", ", ".join(self.wake_model_names))
             return True
         except Exception as exc:
             logger.error("Wakeword-Laden fehlgeschlagen: %s", exc)
@@ -139,8 +154,8 @@ class VoicePipeline:
 
     def run(self) -> None:
         logger.info(
-            "Starte Voice-Pipeline (wake model=%s, threshold=%.3f, cooldown=%.2fs)",
-            self.wake_model_name,
+            "Starte Voice-Pipeline (wake models=%s, threshold=%.3f, cooldown=%.2fs)",
+            ",".join(self.wake_model_names),
             self.wake_threshold,
             self.wake_event_cooldown_seconds,
         )
@@ -218,7 +233,10 @@ class VoicePipeline:
                     continue
 
                 scores = self._model.predict(pcm16)
-                score = max(scores.values()) if scores else 0.0
+                wake_word_name = ""
+                score = 0.0
+                if scores:
+                    wake_word_name, score = max(scores.items(), key=lambda kv: kv[1])
                 if score >= self.wake_threshold:
                     now = time.time()
                     if now - last_trigger_ts < self.wake_event_cooldown_seconds:
@@ -230,11 +248,12 @@ class VoicePipeline:
                             {
                                 "source_name": source_name,
                                 "score": float(score),
+                                "wake_word_name": wake_word_name,
                                 "wake_word_detected": True,
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                             }
                         )
-                        logger.info("Wake Word erkannt auf '%s' (score=%.3f)", source_name, score)
+                        logger.info("Wake Word erkannt auf '%s' (keyword=%s, score=%.3f)", source_name, wake_word_name, score)
                     except queue.Full:
                         logger.warning("Wake-Event-Queue voll, Event verworfen.")
         finally:

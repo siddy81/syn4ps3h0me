@@ -823,8 +823,10 @@ ensure_voice_env_defaults() {
   local defaults=(
     "VOICE_HOST_UID=${uid}"
     "VOICE_HOST_GID=${gid}"
-    "VOICE_WAKEWORD_MODEL=jarvis"
+    "VOICE_WAKEWORD_MODEL=hey_nova"
+    "VOICE_WAKEWORD_MODELS=hey_nova,hey_jarvis"
     "VOICE_WAKEWORD_MODEL_PATH="
+    "VOICE_WAKEWORD_MODEL_PATHS="
     "VOICE_WAKE_WORD_THRESHOLD=0.5"
     "VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0"
     "VOICE_POST_WAKE_RECORD_SECONDS=6"

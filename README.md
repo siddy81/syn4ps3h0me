@@ -161,7 +161,7 @@ Das Skript erledigt automatisiert folgende Schritte:
 - Falls Gruppenrechte neu sind: einmal ab- und wieder anmelden.
 
 ### Voice-Pipeline: Wake-Word → Whisper → Function Calling → Validation → Execution
-Die Voice-Pipeline nutzt Wake-Word-Erkennung (Jarvis), transkribiert lokal und übergibt den Text dann an `qwen2-1.5b-instruct-function-calling-v1` als **reinen Function-Calling-Layer**:
+Die Voice-Pipeline nutzt Wake-Word-Erkennung (standardmäßig `Nova`, optional mehrere Keywords wie `Nova` + `Jarvis`), transkribiert lokal und übergibt den Text dann an `qwen2-1.5b-instruct-function-calling-v1` als **reinen Function-Calling-Layer**:
 
 - Das Modell bekommt nur den User-Text + freigegebene Tool-Schemas (`switch_shelly_device`, `answer_with_llm`, `ask_for_clarification`)
 - Das Modell darf **keine** direkten REST-/MQTT-Aufrufe erzeugen
@@ -176,8 +176,10 @@ VOICE_HOST_UID=1000
 VOICE_HOST_GID=1000
 
 # Wake-Word
-VOICE_WAKEWORD_MODEL=jarvis
+VOICE_WAKEWORD_MODEL=hey_nova
+VOICE_WAKEWORD_MODELS=hey_nova,hey_jarvis
 VOICE_WAKEWORD_MODEL_PATH=
+VOICE_WAKEWORD_MODEL_PATHS=
 VOICE_WAKE_WORD_THRESHOLD=0.5
 VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0
 VOICE_POST_WAKE_RECORD_SECONDS=6
