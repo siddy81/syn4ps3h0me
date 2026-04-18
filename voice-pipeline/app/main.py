@@ -38,7 +38,7 @@ class VoicePipeline:
         self.post_wake_record_min_seconds = float(os.getenv("POST_WAKE_MIN_RECORD_SECONDS", "0.45"))
         self.post_wake_silence_seconds = float(os.getenv("POST_WAKE_SILENCE_SECONDS", "0.35"))
         self.post_wake_silence_rms_threshold = float(os.getenv("POST_WAKE_SILENCE_RMS_THRESHOLD", "550"))
-        self.wake_model_name = os.getenv("WAKEWORD_MODEL", "hey_jarvis")
+        self.wake_model_name = os.getenv("WAKEWORD_MODEL", "Nova")
         self.wake_model_path = os.getenv("WAKEWORD_MODEL_PATH", "").strip()
         self.device_refresh_seconds = int(os.getenv("AUDIO_DEVICE_REFRESH_SECONDS", "30"))
         self.whisper_preload = os.getenv("WHISPER_PRELOAD", "true").lower() == "true"

@@ -161,7 +161,7 @@ Das Skript erledigt automatisiert folgende Schritte:
 - Falls Gruppenrechte neu sind: einmal ab- und wieder anmelden.
 
 ### Voice-Pipeline: Wake-Word → Whisper → Router → LLM/Shelly
-Die Voice-Pipeline nutzt Wake-Word-Erkennung (Jarvis), transkribiert das Folgekommando lokal über `openai/whisper-base` und routet danach regelbasiert:
+Die Voice-Pipeline nutzt Wake-Word-Erkennung (Nova), transkribiert das Folgekommando lokal über `openai/whisper-base` und routet danach regelbasiert:
 
 - Smart-Home-Kommandos (z. B. „schalte das Licht in der Küche aus“) → Shelly REST
 - alle anderen Kommandos → lokales LLM `llama3.2:3b`
@@ -173,7 +173,7 @@ VOICE_HOST_UID=1000
 VOICE_HOST_GID=1000
 
 # Wake-Word
-VOICE_WAKEWORD_MODEL=jarvis
+VOICE_WAKEWORD_MODEL=Nova
 VOICE_WAKEWORD_MODEL_PATH=
 VOICE_WAKE_WORD_THRESHOLD=0.5
 VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0

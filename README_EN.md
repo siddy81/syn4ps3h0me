@@ -158,7 +158,7 @@ The script automates these steps:
 - If group permissions are new: log out and back in once.
 
 ### Voice pipeline: Wake word → Whisper → Router → LLM/Shelly
-The voice pipeline uses wake-word detection (Jarvis), transcribes the following command locally via `openai/whisper-base`, then routes based on rules:
+The voice pipeline uses wake-word detection (Nova), transcribes the following command locally via `openai/whisper-base`, then routes based on rules:
 
 - Smart-home commands (e.g. “turn off the kitchen light”) → Shelly REST
 - all other commands → local LLM `llama3.2:3b`
@@ -170,7 +170,7 @@ VOICE_HOST_UID=1000
 VOICE_HOST_GID=1000
 
 # Wake word
-VOICE_WAKEWORD_MODEL=jarvis
+VOICE_WAKEWORD_MODEL=Nova
 VOICE_WAKEWORD_MODEL_PATH=
 VOICE_WAKE_WORD_THRESHOLD=0.5
 VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0
