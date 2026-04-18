@@ -7,10 +7,10 @@ let CONFIG = {
   relay_id: 0,
   central_base_url: "http://192.168.1.101:8091",
   registration_token: "CHANGE_ME",
-  device_id: "wohnzimmer_licht",
-  room: "wohnzimmer",
-  group: "lichter",
-  aliases: ["wohnzimmerlicht", "wohnzimmer lampe"],
+  device_id: "SET_DEVICE_ID",
+  room: "SET_ROOM",
+  group: "SET_GROUP",
+  aliases: ["SET_ALIAS_1"],
   heartbeat_interval_sec: 30,
   command_path: "/script/light-control",
   capabilities: ["switch"]
@@ -52,6 +52,11 @@ function postJson(url, payload, cb) {
 }
 
 function registerAtCentral() {
+  if (CONFIG.registration_token === "CHANGE_ME" || CONFIG.device_id.indexOf("SET_") === 0) {
+    print("[registry] skipped registration: please configure registration_token + device_id first");
+    return;
+  }
+
   let payload = {
     id: CONFIG.device_id,
     type: "shelly_1pm",

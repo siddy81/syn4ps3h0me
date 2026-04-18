@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import time
+from typing import Any
 from urllib import error, request
 from urllib.parse import urlparse
 
@@ -12,7 +14,11 @@ class OllamaClient:
     def __init__(self) -> None:
         self.base_url = os.getenv("LLM_BASE_URL", "http://host.docker.internal:8000")
         self.model = os.getenv("LLM_MODEL", "llama3.2:3b")
+        self.function_model = os.getenv("FUNCTION_CALLING_MODEL", "qwen2-1.5b-instruct-function-calling-v1")
         self.timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "45"))
+        self.require_hailo = os.getenv("FUNCTION_CALLING_REQUIRE_HAILO", "true").lower() == "true"
+        self.allow_function_model_fallback = os.getenv("ALLOW_FUNCTION_MODEL_FALLBACK", "true").lower() == "true"
+        self._fc_ready = False
 
     def _candidate_base_urls(self) -> list[str]:
         primary = self.base_url.rstrip("/")
@@ -24,35 +30,155 @@ class OllamaClient:
                 candidates.append(fallback)
         return candidates
 
-    def chat(self, prompt: str) -> str:
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "messages": [{"role": "user", "content": prompt}],
-        }
+    def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
-
         last_error: Exception | None = None
+        raw_response = ""
+
         for base_url in self._candidate_base_urls():
-            url = f"{base_url}/api/chat"
+            url = f"{base_url}{path}"
             req = request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
-            logger.info("LLM-Request: model=%s url=%s", self.model, url)
             try:
                 with request.urlopen(req, timeout=self.timeout) as resp:
-                    response_text = resp.read().decode("utf-8", errors="replace")
-                payload = json.loads(response_text)
-                message = payload.get("message", {})
-                content = str(message.get("content", "")).strip()
-                if not content:
-                    raise RuntimeError("LLM lieferte leeren Inhalt.")
-                logger.info("LLM-Response: %s", content)
-                print(f"[voice-pipeline] LLM-Antwort: {content}")
-                return content
+                    raw_response = resp.read().decode("utf-8", errors="replace")
+                return json.loads(raw_response)
             except json.JSONDecodeError as exc:
-                raise RuntimeError(f"LLM lieferte kein valides JSON: {response_text}") from exc
+                raise RuntimeError(f"LLM lieferte kein valides JSON: {raw_response}") from exc
             except error.URLError as exc:
                 last_error = exc
                 logger.warning("LLM endpoint nicht erreichbar (%s): %s", url, exc)
-                continue
 
         raise RuntimeError(f"LLM-Aufruf fehlgeschlagen: {last_error}")
+
+    def _get_json(self, path: str) -> dict[str, Any]:
+        last_error: Exception | None = None
+        for base_url in self._candidate_base_urls():
+            url = f"{base_url}{path}"
+            req = request.Request(url, method="GET")
+            try:
+                with request.urlopen(req, timeout=self.timeout) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+                return json.loads(raw)
+            except Exception as exc:
+                last_error = exc
+                logger.warning("GET %s fehlgeschlagen: %s", url, exc)
+        raise RuntimeError(f"GET {path} fehlgeschlagen: {last_error}")
+
+    def _chat_v1(self, *, model: str, messages: list[dict[str, str]]) -> dict[str, Any]:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+        }
+        response = self._post_json("/v1/chat/completions", payload)
+        choices = response.get("choices", []) if isinstance(response, dict) else []
+        if not choices:
+            raise RuntimeError("v1 chat completion lieferte keine choices.")
+        message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+        return {"message": message}
+
+    def preload_function_model(self) -> None:
+        start = time.time()
+        logger.info("Beginne Preload Function-Calling-Modell: %s", self.function_model)
+
+        model_list = self._get_json("/api/tags")
+        names = {m.get("name") for m in model_list.get("models", []) if isinstance(m, dict)}
+        if self.function_model not in names:
+            raise RuntimeError(
+                f"Function-Calling-Modell fehlt: {self.function_model}. Bitte vorab installieren (kein Lazy Loading erlaubt)."
+            )
+
+        if self.require_hailo:
+            hailo_info = self._get_json("/hailo/v1/list")
+            models = hailo_info.get("models", []) if isinstance(hailo_info, dict) else []
+            if not isinstance(models, list) or len(models) == 0:
+                raise RuntimeError("Hailo Runtime lieferte keine Modelle über /hailo/v1/list.")
+            logger.info("Hailo Runtime erkannt: %s", hailo_info)
+
+        warmup = self.chat_with_tools(
+            user_text="Schalte das Licht an.",
+            tools=[],
+            system_prompt="Gib nur JSON zurück: {\"name\":\"ask_for_clarification\",\"arguments\":{\"question\":\"ok?\"}}",
+            model=self.function_model,
+        )
+        logger.info("Function-Calling Warmup erfolgreich: %s", warmup)
+        self._fc_ready = True
+        logger.info("Ende Modell-Preload, Dauer=%.2fs", time.time() - start)
+
+    def ensure_function_model_ready(self) -> None:
+        if not self._fc_ready:
+            raise RuntimeError("Function-Calling-Modell nicht ready (Preload/Warmup fehlt).")
+
+    def chat(self, prompt: str) -> str:
+        messages = [{"role": "user", "content": prompt}]
+        payload = {"model": self.model, "stream": False, "messages": messages}
+        try:
+            response = self._post_json("/api/chat", payload)
+        except RuntimeError as exc:
+            logger.warning("Fallback auf /v1/chat/completions für Chat-Antwort: %s", exc)
+            response = self._chat_v1(model=self.model, messages=messages)
+        message = response.get("message", {})
+        content = str(message.get("content", "")).strip()
+        if not content:
+            raise RuntimeError("LLM lieferte leeren Inhalt.")
+        logger.info("LLM-Response: %s", content)
+        return content
+
+    def chat_with_tools(self, user_text: str, tools: list[dict[str, Any]], system_prompt: str, model: str | None = None) -> dict[str, Any]:
+        active_model = model or self.function_model
+        payload = {
+            "model": active_model,
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text},
+            ],
+            "tools": tools,
+        }
+        try:
+            response = self._post_json("/api/chat", payload)
+        except RuntimeError as exc:
+            if not self.allow_function_model_fallback:
+                raise
+            logger.warning("Tool-Call Request fehlgeschlagen, fallback ohne tools[] für Modell %s: %s", active_model, exc)
+            fallback_payload = {
+                "model": active_model,
+                "stream": False,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            f"{system_prompt}\n"
+                            "Wenn native tool_calls nicht unterstützt werden, antworte ausschließlich mit JSON "
+                            '{"name":"<tool_name>","arguments":{...}}.'
+                        ),
+                    },
+                    {"role": "user", "content": user_text},
+                ],
+            }
+            try:
+                response = self._post_json("/api/chat", fallback_payload)
+            except RuntimeError as second_exc:
+                logger.warning("Fallback ohne tools[] über /api/chat fehlgeschlagen, versuche /v1/chat/completions: %s", second_exc)
+                response = self._chat_v1(model=active_model, messages=fallback_payload["messages"])
+        message = response.get("message", {}) if isinstance(response, dict) else {}
+
+        tool_calls = message.get("tool_calls") or []
+        if tool_calls:
+            first = tool_calls[0]
+            function = first.get("function", {}) if isinstance(first, dict) else {}
+            return {
+                "name": function.get("name"),
+                "arguments": function.get("arguments", {}),
+                "raw_message": message,
+            }
+
+        content = str(message.get("content", "")).strip()
+        if not content:
+            raise RuntimeError("Function-Calling-Modell lieferte weder Tool-Call noch Content.")
+
+        parsed = json.loads(content)
+        if not isinstance(parsed, dict):
+            raise RuntimeError("Function-Calling Content ist kein JSON-Objekt.")
+        parsed["raw_message"] = message
+        return parsed

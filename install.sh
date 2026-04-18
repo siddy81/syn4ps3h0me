@@ -24,6 +24,7 @@ SERVICE_FILE="/etc/systemd/system/hailo-ollama.service"
 DEB_URL="https://dev-public.hailo.ai/2025_12/Hailo10/hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEB_FILE="hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEFAULT_LLM_MODEL="llama3.2:3b"
+FUNCTION_CALLING_MODEL="qwen2-1.5b-instruct-function-calling-v1"
 ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
@@ -59,6 +60,156 @@ HAILO_COMPAT_REQUIREMENTS="${PROJECT_DIR}/requirements-hailo-compat.txt"
 log()  { echo "[INFO]  $*"; }
 warn() { echo "[WARN]  $*" >&2; }
 fail() { echo "[ERROR] $*" >&2; exit 1; }
+
+model_present_in_tags() {
+  local tags_json="$1"
+  local wanted_model="$2"
+  TAGS_JSON="${tags_json}" WANTED_MODEL="${wanted_model}" python3 - <<'PY'
+import json
+import os
+import sys
+
+raw = os.environ.get("TAGS_JSON", "")
+wanted = os.environ.get("WANTED_MODEL", "").strip().lower()
+if not raw or not wanted:
+    sys.exit(1)
+
+def canonical(name: str) -> str:
+    n = name.strip().lower()
+    if ":" in n:
+        n = n.split(":", 1)[0]
+    return n
+
+try:
+    payload = json.loads(raw)
+except Exception:
+    sys.exit(1)
+
+names = []
+for item in payload.get("models", []):
+    if isinstance(item, dict) and item.get("name"):
+        names.append(str(item["name"]))
+
+wanted_c = canonical(wanted)
+for name in names:
+    cur = canonical(name)
+    if cur == wanted_c:
+        sys.exit(0)
+    if wanted_c in cur:
+        sys.exit(0)
+
+sys.exit(1)
+PY
+}
+
+detect_available_function_model() {
+  local tags_json="${1:-}"
+  local hailo_json="${2:-}"
+  TAGS_JSON="${tags_json}" HAILO_JSON="${hailo_json}" python3 - <<'PY'
+import json
+import os
+
+tags_raw = os.environ.get("TAGS_JSON", "")
+hailo_raw = os.environ.get("HAILO_JSON", "")
+
+def canonical(text: str) -> str:
+    t = text.strip().lower()
+    if ":" in t:
+        t = t.split(":", 1)[0]
+    return t
+
+def collect_strings(obj):
+    if isinstance(obj, dict):
+        for v in obj.values():
+            yield from collect_strings(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from collect_strings(v)
+    elif isinstance(obj, str):
+        yield obj
+
+def load_json(raw):
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+tags = load_json(tags_raw)
+hailo = load_json(hailo_raw)
+
+models = []
+for item in tags.get("models", []):
+    if isinstance(item, dict) and item.get("name"):
+        models.append(str(item["name"]))
+
+models.extend(collect_strings(hailo))
+
+def is_fc_qwen_candidate(name: str) -> bool:
+    n = canonical(name)
+    return "qwen2" in n and "1.5" in n and ("function" in n or "tool" in n)
+
+for name in models:
+    if is_fc_qwen_candidate(name):
+        print(name.strip())
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+extract_hailo_runtime_models() {
+  local hailo_json="${1:-}"
+  HAILO_JSON="${hailo_json}" python3 - <<'PY'
+import json
+import os
+
+raw = os.environ.get("HAILO_JSON", "")
+if not raw:
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(raw)
+except Exception:
+    raise SystemExit(0)
+
+models = []
+if isinstance(payload, dict):
+    if isinstance(payload.get("models"), list):
+        for item in payload["models"]:
+            if isinstance(item, str):
+                models.append(item)
+            elif isinstance(item, dict):
+                for key in ("name", "model"):
+                    if isinstance(item.get(key), str):
+                        models.append(item[key])
+                        break
+for m in models:
+    print(m)
+PY
+}
+
+extract_tag_models() {
+  local tags_json="${1:-}"
+  TAGS_JSON="${tags_json}" python3 - <<'PY'
+import json
+import os
+
+raw = os.environ.get("TAGS_JSON", "")
+if not raw:
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(raw)
+except Exception:
+    raise SystemExit(0)
+
+for item in payload.get("models", []):
+    if isinstance(item, dict) and isinstance(item.get("name"), str):
+        print(item["name"])
+PY
+}
 
 wait_with_progress() {
   local pid="$1"
@@ -758,6 +909,174 @@ ensure_default_llm_model() {
   warn "Modelltest über /api/chat ist fehlgeschlagen. Bitte Modell-/Backend-Status prüfen."
 }
 
+ensure_function_calling_model() {
+  log "Prüfe, ob Function-Calling-Modell ${FUNCTION_CALLING_MODEL} verfügbar ist ..."
+  local tags_json
+  local hailo_json=""
+  local candidate
+  local candidates_csv
+  local max_checks=60
+  local check_no
+  local pull_response=""
+  local detected_model=""
+  local pull_not_found_count=0
+  local candidate_count=0
+  local runtime_models=""
+  local tag_models=""
+  local allow_fc_fallback=""
+  local fallback_candidate=""
+
+  if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
+    fail "Konnte Modellliste nicht lesen. Function-Calling-Modell kann nicht verifiziert werden."
+  fi
+  tag_models="$(extract_tag_models "${tags_json}")"
+
+  hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
+  runtime_models="$(extract_hailo_runtime_models "${hailo_json}")"
+  if detected_model="$(detect_available_function_model "${tags_json}" "${hailo_json}" 2>/dev/null)"; then
+    FUNCTION_CALLING_MODEL="${detected_model}"
+    log "Verwende bereits verfügbares Function-Calling-Modell aus Runtime-Liste: ${FUNCTION_CALLING_MODEL}"
+    return
+  fi
+
+  if model_present_in_tags "${tags_json}" "${FUNCTION_CALLING_MODEL}"; then
+    log "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} ist bereits vorhanden."
+    return
+  fi
+
+  candidates_csv="${FUNCTION_CALLING_MODEL_CANDIDATES:-${FUNCTION_CALLING_MODEL},Qwen2-1.5B-Instruct-Function-Calling-v1,qwen2-1.5b-instruct-function-calling-v1:latest}"
+
+  IFS=',' read -r -a _candidates <<<"${candidates_csv}"
+  candidate_count="${#_candidates[@]}"
+  for candidate in "${_candidates[@]}"; do
+    candidate="$(echo "${candidate}" | xargs)"
+    [[ -n "${candidate}" ]] || continue
+    log "Function-Calling-Modell-Kandidat fehlt: ${candidate}. Starte Vorab-Download ..."
+
+    if ! pull_response="$(curl --silent --show-error --fail \
+        "http://localhost:8000/api/pull" \
+        -H "Content-Type: application/json" \
+        -d "{ \"model\": \"${candidate}\", \"stream\" : true }" 2>&1)"; then
+      warn "Download für Kandidat fehlgeschlagen: ${candidate}"
+      continue
+    fi
+    if grep -qi "\"error\"" <<<"${pull_response}"; then
+      warn "Pull-API meldete Fehler für Kandidat ${candidate}: ${pull_response}"
+      if grep -qi "not found" <<<"${pull_response}"; then
+        pull_not_found_count=$((pull_not_found_count + 1))
+      fi
+      continue
+    fi
+
+    for ((check_no=1; check_no<=max_checks; check_no++)); do
+      if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
+        sleep 1
+        continue
+      fi
+      hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
+      if detected_model="$(detect_available_function_model "${tags_json}" "${hailo_json}" 2>/dev/null)"; then
+        FUNCTION_CALLING_MODEL="${detected_model}"
+        log "Function-Calling-Modell erfolgreich vorinstalliert und in Runtime erkannt: ${FUNCTION_CALLING_MODEL}"
+        return
+      fi
+      if model_present_in_tags "${tags_json}" "${candidate}"; then
+        FUNCTION_CALLING_MODEL="${candidate}"
+        log "Function-Calling-Modell erfolgreich vorinstalliert und verifiziert: ${FUNCTION_CALLING_MODEL}"
+        return
+      fi
+      sleep 1
+    done
+    warn "Kandidat nach Download nicht in /api/tags sichtbar: ${candidate}"
+  done
+
+  if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
+    fail "Nach Download konnte die Modellliste nicht erneut gelesen werden."
+  fi
+  tag_models="$(extract_tag_models "${tags_json}")"
+  hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
+  runtime_models="$(extract_hailo_runtime_models "${hailo_json}")"
+  if detected_model="$(detect_available_function_model "${tags_json}" "${hailo_json}" 2>/dev/null)"; then
+    FUNCTION_CALLING_MODEL="${detected_model}"
+    log "Function-Calling-Modell aus Runtime-Listung erkannt: ${FUNCTION_CALLING_MODEL}"
+    return
+  fi
+
+  if [[ "${pull_not_found_count}" -ge "${candidate_count}" ]]; then
+    allow_fc_fallback="$(echo "${VOICE_ALLOW_FUNCTION_MODEL_FALLBACK:-true}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "${allow_fc_fallback}" == "true" ]]; then
+      for fallback_candidate in qwen2:1.5b qwen2.5-instruct:1.5b llama3.2:3b; do
+        if grep -qx "${fallback_candidate}" <<<"${tag_models}"; then
+          FUNCTION_CALLING_MODEL="${fallback_candidate}"
+          warn "Function-Calling-Modell aktuell nicht verfügbar. Nutze expliziten Übergangs-Fallback aus /api/tags: ${FUNCTION_CALLING_MODEL}. Bitte später auf Qwen2-Function-Calling upgraden."
+          return
+        fi
+      done
+    fi
+
+    fail "Kein Kandidat ist in deiner hailo-ollama Version verfügbar (alle Pulls = 'model not found'). Modelle in /api/tags: ${tag_models:-<leer>}; Runtime-Modelle in /hailo/v1/list: ${runtime_models:-<leer>}. Bitte hailo_gen_ai_model_zoo/hailo-ollama auf eine Version mit Qwen2 Function-Calling aktualisieren oder VOICE_FUNCTION_CALLING_MODEL auf ein tatsächlich in /api/tags vorhandenes Modell setzen. Optionaler Übergang: VOICE_ALLOW_FUNCTION_MODEL_FALLBACK=true."
+  fi
+
+  fail "Kein Function-Calling-Modell konnte vorbereitet werden. Geprüfte Kandidaten: ${candidates_csv}. Bitte prüfe 'curl http://localhost:8000/hailo/v1/list' und 'curl http://localhost:8000/api/tags' und setze VOICE_FUNCTION_CALLING_MODEL auf den dort sichtbaren Modellnamen."
+}
+
+verify_hailo10h_runtime() {
+  log "Verifiziere Hailo Runtime/Hardware (Hailo-10H erwartet) ..."
+
+  if ! command -v hailortcli >/dev/null 2>&1; then
+    fail "hailortcli fehlt. Hailo Runtime ist nicht installiert."
+  fi
+
+  local identify_output
+  if ! identify_output="$(hailortcli fw-control identify 2>&1)"; then
+    fail "Hailo Hardware-Identifikation fehlgeschlagen: ${identify_output}"
+  fi
+  log "hailortcli identify: ${identify_output}"
+  if ! grep -qi "HAILO10H" <<<"${identify_output}"; then
+    fail "Erkannte Architektur ist nicht HAILO10H. Ausgabe: ${identify_output}"
+  fi
+
+  local hailo_list
+  if ! hailo_list="$(curl --silent --show-error --fail "http://localhost:8000/hailo/v1/list" 2>/dev/null)"; then
+    fail "Hailo API /hailo/v1/list nicht erreichbar."
+  fi
+  if ! grep -qi "\"models\"" <<<"${hailo_list}"; then
+    fail "Hailo API lieferte keine erwartete Modellliste. Antwort: ${hailo_list}"
+  fi
+  log "Hailo Runtime API erreichbar, Modellliste: ${hailo_list}"
+}
+
+run_function_calling_smoke_test() {
+  log "Starte Function-Calling Smoke-Test (Qwen2-1.5B Function-Calling) ..."
+  local payload response fallback_payload
+  payload=$(cat <<EOF
+{"model":"${FUNCTION_CALLING_MODEL}","stream":false,"messages":[{"role":"system","content":"Antworte nur mit JSON-Tool-Call."},{"role":"user","content":"Schalte Wohnzimmerlicht an"}],"tools":[{"type":"function","function":{"name":"switch_shelly_device","description":"Schaltet ein Shelly-Gerät","parameters":{"type":"object","properties":{"room":{"type":"string"},"action":{"type":"string","enum":["on","off","toggle"]}},"required":["action"]}}}]}
+EOF
+)
+  if response="$(curl --silent --show-error --fail "http://localhost:8000/api/chat" -H "Content-Type: application/json" -d "${payload}" 2>/dev/null)"; then
+    if grep -Eq "tool_calls|switch_shelly_device|ask_for_clarification|answer_with_llm" <<<"${response}"; then
+      log "Function-Calling Smoke-Test erfolgreich (Tool-Call-Modus)."
+      return
+    fi
+  fi
+
+  if [[ "${VOICE_ALLOW_FUNCTION_MODEL_FALLBACK:-true}" != "true" ]]; then
+    fail "Function-Calling Smoke-Test fehlgeschlagen (kein API-Response)."
+  fi
+
+  warn "Tool-Call Smoke-Test fehlgeschlagen, versuche Übergangs-Smoke-Test ohne tools[] für Fallback-Modell ${FUNCTION_CALLING_MODEL} ..."
+  fallback_payload=$(cat <<EOF
+{"model":"${FUNCTION_CALLING_MODEL}","stream":false,"messages":[{"role":"system","content":"Antworte ausschließlich als JSON-Objekt mit Feldern name und arguments. Nutze name=switch_shelly_device."},{"role":"user","content":"Schalte Wohnzimmerlicht an"}]}
+EOF
+)
+  if ! response="$(curl --silent --show-error --fail "http://localhost:8000/api/chat" -H "Content-Type: application/json" -d "${fallback_payload}")"; then
+    fail "Function-Calling Smoke-Test fehlgeschlagen (Fallback-Modus ohne tools ebenfalls fehlgeschlagen)."
+  fi
+  if ! grep -Eq "switch_shelly_device|\"name\"|\"arguments\"" <<<"${response}"; then
+    fail "Function-Calling Smoke-Test fehlgeschlagen (Fallback-Modus lieferte kein strukturiertes JSON): ${response}"
+  fi
+  log "Function-Calling Smoke-Test erfolgreich (Fallback-Modus ohne tools[])."
+}
+
 
 ensure_voice_env_defaults() {
   cd "${PROJECT_DIR}"
@@ -783,6 +1102,9 @@ ensure_voice_env_defaults() {
     "VOICE_WHISPER_CACHE_DIR=/home/siddy/.cache/huggingface"
     "VOICE_LLM_BASE_URL=http://host.docker.internal:8000"
     "VOICE_LLM_MODEL=llama3.2:3b"
+    "VOICE_FUNCTION_CALLING_MODEL=${FUNCTION_CALLING_MODEL}"
+    "VOICE_ALLOW_FUNCTION_MODEL_FALLBACK=true"
+    "VOICE_FUNCTION_CALLING_REQUIRE_HAILO=true"
     "VOICE_LLM_TIMEOUT_SECONDS=45"
     "SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json"
     "SHELLY_DEVICE_MAP_JSON="
@@ -1027,6 +1349,9 @@ main() {
     enable_and_start_hailo_service
     wait_for_hailo_ollama
     ensure_default_llm_model
+    ensure_function_calling_model
+    verify_hailo10h_runtime
+    run_function_calling_smoke_test
   fi
 
   if [[ "${MODULE_VOICE}" == "true" || "${MODULE_LLM_CHAT}" == "true" ]]; then
