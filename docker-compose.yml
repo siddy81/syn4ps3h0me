@@ -272,7 +272,7 @@ services:
 
 
   open-webui-knowledge-sync:
-    image: python:3.12-alpine
+    image: python:3.14-alpine
     container_name: open-webui-knowledge-sync
     restart: unless-stopped
     network_mode: host
