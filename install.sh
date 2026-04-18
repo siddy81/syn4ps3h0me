@@ -1007,15 +1007,18 @@ verify_hailo10h_runtime() {
     fail "Hailo Hardware-Identifikation fehlgeschlagen: ${identify_output}"
   fi
   log "hailortcli identify: ${identify_output}"
+  if ! grep -qi "HAILO10H" <<<"${identify_output}"; then
+    fail "Erkannte Architektur ist nicht HAILO10H. Ausgabe: ${identify_output}"
+  fi
 
   local hailo_list
   if ! hailo_list="$(curl --silent --show-error --fail "http://localhost:8000/hailo/v1/list" 2>/dev/null)"; then
     fail "Hailo API /hailo/v1/list nicht erreichbar."
   fi
-  if ! grep -qi "10h" <<<"${hailo_list}"; then
-    fail "Hailo-10H wurde nicht eindeutig erkannt. Antwort: ${hailo_list}"
+  if ! grep -qi "\"models\"" <<<"${hailo_list}"; then
+    fail "Hailo API lieferte keine erwartete Modellliste. Antwort: ${hailo_list}"
   fi
-  log "Hailo API bestätigt: ${hailo_list}"
+  log "Hailo Runtime API erreichbar, Modellliste: ${hailo_list}"
 }
 
 run_function_calling_smoke_test() {
