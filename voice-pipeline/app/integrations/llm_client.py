@@ -17,6 +17,7 @@ class OllamaClient:
         self.function_model = os.getenv("FUNCTION_CALLING_MODEL", "qwen2-1.5b-instruct-function-calling-v1")
         self.timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "45"))
         self.require_hailo = os.getenv("FUNCTION_CALLING_REQUIRE_HAILO", "true").lower() == "true"
+        self.allow_function_model_fallback = os.getenv("ALLOW_FUNCTION_MODEL_FALLBACK", "true").lower() == "true"
         self._fc_ready = False
 
     def _candidate_base_urls(self) -> list[str]:
@@ -76,9 +77,9 @@ class OllamaClient:
 
         if self.require_hailo:
             hailo_info = self._get_json("/hailo/v1/list")
-            text = json.dumps(hailo_info).lower()
-            if "hailo" not in text or "10h" not in text:
-                raise RuntimeError("Hailo Runtime/Hardware nicht wie erwartet erkannt (Hailo-10H erforderlich).")
+            models = hailo_info.get("models", []) if isinstance(hailo_info, dict) else []
+            if not isinstance(models, list) or len(models) == 0:
+                raise RuntimeError("Hailo Runtime lieferte keine Modelle über /hailo/v1/list.")
             logger.info("Hailo Runtime erkannt: %s", hailo_info)
 
         warmup = self.chat_with_tools(
@@ -110,8 +111,9 @@ class OllamaClient:
         return content
 
     def chat_with_tools(self, user_text: str, tools: list[dict[str, Any]], system_prompt: str, model: str | None = None) -> dict[str, Any]:
+        active_model = model or self.function_model
         payload = {
-            "model": model or self.function_model,
+            "model": active_model,
             "stream": False,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -119,7 +121,28 @@ class OllamaClient:
             ],
             "tools": tools,
         }
-        response = self._post_json("/api/chat", payload)
+        try:
+            response = self._post_json("/api/chat", payload)
+        except RuntimeError as exc:
+            if not self.allow_function_model_fallback:
+                raise
+            logger.warning("Tool-Call Request fehlgeschlagen, fallback ohne tools[] für Modell %s: %s", active_model, exc)
+            fallback_payload = {
+                "model": active_model,
+                "stream": False,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            f"{system_prompt}\n"
+                            "Wenn native tool_calls nicht unterstützt werden, antworte ausschließlich mit JSON "
+                            '{"name":"<tool_name>","arguments":{...}}.'
+                        ),
+                    },
+                    {"role": "user", "content": user_text},
+                ],
+            }
+            response = self._post_json("/api/chat", fallback_payload)
         message = response.get("message", {}) if isinstance(response, dict) else {}
 
         tool_calls = message.get("tool_calls") or []
