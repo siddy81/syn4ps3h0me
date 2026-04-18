@@ -184,6 +184,10 @@ VOICE_POST_WAKE_MIN_RECORD_SECONDS=0.45
 VOICE_POST_WAKE_SILENCE_SECONDS=0.35
 VOICE_POST_WAKE_SILENCE_RMS_THRESHOLD=550
 
+# Note:
+# If one wakeword model from WAKEWORD_MODELS is not available locally,
+# the pipeline will continue with available models and log missing ones as warnings.
+
 # Audio/Devices
 VOICE_AUDIO_SAMPLE_RATE=16000
 VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30

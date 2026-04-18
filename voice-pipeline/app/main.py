@@ -150,8 +150,25 @@ class VoicePipeline:
                 logger.info("Wakeword über Model-Paths geladen: %s", ", ".join(resolved_paths))
                 return True
 
-            self._model = Model(wakeword_models=self.wake_model_names)
-            logger.info("Wakeword über Modellnamen geladen: %s", ", ".join(self.wake_model_names))
+            resolved_models: list[str] = []
+            rejected_models: list[str] = []
+            for model_name in self.wake_model_names:
+                try:
+                    # Probe einzeln, damit ein ungültiges Modell nicht alle konfigurierten Keywords blockiert.
+                    Model(wakeword_models=[model_name])
+                    resolved_models.append(model_name)
+                except Exception as exc:
+                    rejected_models.append(f"{model_name} ({exc})")
+
+            if not resolved_models:
+                logger.error("Kein konfiguriertes Wakeword-Modell konnte geladen werden: %s", ", ".join(rejected_models))
+                return False
+
+            if rejected_models:
+                logger.warning("Nicht verfügbare Wakeword-Modelle werden ignoriert: %s", "; ".join(rejected_models))
+
+            self._model = Model(wakeword_models=resolved_models)
+            logger.info("Wakeword über Modellnamen geladen: %s", ", ".join(resolved_models))
             return True
         except Exception as exc:
             logger.error("Wakeword-Laden fehlgeschlagen: %s", exc)
