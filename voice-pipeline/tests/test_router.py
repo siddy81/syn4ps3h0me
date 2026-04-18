@@ -8,10 +8,10 @@ class RouterTests(unittest.TestCase):
         self.router = CommandRouter()
 
     def test_normalize_removes_wake_word(self) -> None:
-        self.assertEqual(normalize_command("Nova, erzähl mir einen Witz"), "erzähl mir einen Witz")
+        self.assertEqual(normalize_command("Jarvis, erzähl mir einen Witz"), "erzähl mir einen Witz")
 
     def test_routes_kitchen_light_off(self) -> None:
-        routed = self.router.route("Nova schalte das Licht in der Küche aus")
+        routed = self.router.route("Jarvis schalte das Licht in der Küche aus")
         self.assertEqual(routed.target, RouteTarget.SHELLY)
         assert routed.smart_home is not None
         self.assertEqual(routed.smart_home.action, "off")
@@ -19,11 +19,11 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(routed.smart_home.device, "licht")
 
     def test_routes_general_prompt_to_llm(self) -> None:
-        routed = self.router.route("Nova, erklär mir Quantenphysik")
+        routed = self.router.route("Jarvis, erklär mir Quantenphysik")
         self.assertEqual(routed.target, RouteTarget.LLM)
 
     def test_routes_compound_room_device_token_to_shelly(self) -> None:
-        routed = self.router.route("Nova, schalte das Wohnzimmerlicht aus")
+        routed = self.router.route("Jarvis, schalte das Wohnzimmerlicht aus")
         self.assertEqual(routed.target, RouteTarget.SHELLY)
         assert routed.smart_home is not None
         self.assertEqual(routed.smart_home.action, "off")

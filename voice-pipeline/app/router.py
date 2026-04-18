@@ -24,7 +24,7 @@ class RoutedCommand:
     smart_home: SmartHomeCommand | None = None
 
 
-def normalize_command(text: str, wake_word: str = "Nova") -> str:
+def normalize_command(text: str, wake_word: str = "jarvis") -> str:
     normalized = text.strip()
     normalized = re.sub(r"^[\s,.;:!?-]+", "", normalized)
     wake_pattern = rf"^{re.escape(wake_word)}\b[\s,.;:!?-]*"
