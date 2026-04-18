@@ -825,6 +825,7 @@ ensure_voice_env_defaults() {
     "VOICE_HOST_GID=${gid}"
     "VOICE_WAKEWORD_MODEL=nova"
     "VOICE_WAKEWORD_MODELS=nova,jarvis"
+    "VOICE_WAKEWORD_MODEL_ALIASES=nova:jarvis"
     "VOICE_WAKEWORD_MODEL_PATH="
     "VOICE_WAKEWORD_MODEL_PATHS="
     "VOICE_WAKEWORD_NOVA_MODEL_SOURCE="
@@ -892,6 +893,16 @@ ensure_wakeword_model_artifacts() {
   fi
 
   if [[ "${configured_models}" != *"nova"* ]]; then
+    return
+  fi
+
+  local configured_aliases
+  configured_aliases="$(read_env_key "VOICE_WAKEWORD_MODEL_ALIASES" "${ENV_FILE}")"
+  if [[ -z "${configured_aliases}" ]]; then
+    configured_aliases="nova:jarvis"
+  fi
+  if [[ "${configured_aliases}" == *"nova:jarvis"* ]]; then
+    log "Wakeword 'nova' nutzt Pretrained-Backend-Alias 'jarvis' (VOICE_WAKEWORD_MODEL_ALIASES=${configured_aliases})."
     return
   fi
 

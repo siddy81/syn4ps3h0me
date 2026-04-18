@@ -38,6 +38,20 @@ class VoicePipeline:
         candidate = name.strip()
         return candidate.lower().replace(" ", "_")
 
+    @classmethod
+    def _parse_wakeword_aliases(cls, raw: str) -> dict[str, str]:
+        aliases: dict[str, str] = {}
+        for entry in raw.split(","):
+            token = entry.strip()
+            if not token or ":" not in token:
+                continue
+            source, target = token.split(":", 1)
+            source_normalized = cls._normalize_wake_model_name(source)
+            target_normalized = cls._normalize_wake_model_name(target)
+            if source_normalized and target_normalized:
+                aliases[source_normalized] = target_normalized
+        return aliases
+
     def __init__(self) -> None:
         self.sample_rate = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
         self.wake_threshold = float(os.getenv("WAKE_WORD_THRESHOLD", "0.5"))
@@ -50,6 +64,7 @@ class VoicePipeline:
         self.wake_model_names = [self._normalize_wake_model_name(w) for w in wakeword_models_env.split(",") if w.strip()]
         if not self.wake_model_names:
             self.wake_model_names = [self._normalize_wake_model_name("nova")]
+        self.wake_model_aliases = self._parse_wakeword_aliases(os.getenv("WAKEWORD_MODEL_ALIASES", "nova:jarvis"))
         self.wake_model_path = os.getenv("WAKEWORD_MODEL_PATH", "").strip()
         self.wake_model_paths = [p.strip() for p in os.getenv("WAKEWORD_MODEL_PATHS", "").split(",") if p.strip()]
         self.device_refresh_seconds = int(os.getenv("AUDIO_DEVICE_REFRESH_SECONDS", "30"))
@@ -58,6 +73,7 @@ class VoicePipeline:
         self._stop_event = threading.Event()
         self._wake_events: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=20)
         self._model: Model | None = None
+        self._wakeword_display_aliases: dict[str, str] = {}
         self._active_threads: dict[str, threading.Thread] = {}
         self._ready_announced = False
 
@@ -153,18 +169,37 @@ class VoicePipeline:
             resolved_models: list[str] = []
             resolved_model_paths: list[str] = []
             rejected_models: list[str] = []
+            self._wakeword_display_aliases = {}
             for model_name in self.wake_model_names:
+                local_model_path = Path("/app/app/models/wakewords", f"{model_name}.tflite")
+                if local_model_path.exists():
+                    resolved_model_paths.append(str(local_model_path))
+                    logger.info("Wakeword-Modell '%s' wird über lokalen Pfad geladen: %s", model_name, local_model_path)
+                    continue
+
+                backend_model_name = self.wake_model_aliases.get(model_name, model_name)
                 try:
                     # Probe einzeln, damit ein ungültiges Modell nicht alle konfigurierten Keywords blockiert.
-                    Model(wakeword_models=[model_name])
-                    resolved_models.append(model_name)
+                    Model(wakeword_models=[backend_model_name])
+                    resolved_models.append(backend_model_name)
+                    if model_name != backend_model_name:
+                        self._wakeword_display_aliases[self._normalize_wake_model_name(backend_model_name)] = model_name
+                        logger.info(
+                            "Wakeword-Alias aktiv: '%s' nutzt Backend-Modell '%s'.",
+                            model_name,
+                            backend_model_name,
+                        )
                 except Exception as exc:
-                    fallback_path = Path("/app/app/models/wakewords", f"{model_name}.tflite")
+                    fallback_path = Path("/app/app/models/wakewords", f"{backend_model_name}.tflite")
                     if fallback_path.exists():
                         resolved_model_paths.append(str(fallback_path))
+                        if model_name != backend_model_name:
+                            self._wakeword_display_aliases[self._normalize_wake_model_name(backend_model_name)] = model_name
                         logger.info("Wakeword-Modell '%s' wird über lokalen Pfad geladen: %s", model_name, fallback_path)
                     else:
-                        rejected_models.append(f"{model_name} ({exc}; erwartet z.B. {fallback_path})")
+                        rejected_models.append(
+                            f"{model_name} ({exc}; erwartet z.B. /app/app/models/wakewords/{model_name}.tflite)"
+                        )
 
             if not resolved_models and not resolved_model_paths:
                 logger.error("Kein konfiguriertes Wakeword-Modell konnte geladen werden: %s", ", ".join(rejected_models))
@@ -178,7 +213,7 @@ class VoicePipeline:
                 )
                 return False
 
-            self._model = Model(wakeword_models=resolved_models, wakeword_model_paths=resolved_model_paths)
+            self._model = Model(wakeword_models=sorted(set(resolved_models)), wakeword_model_paths=resolved_model_paths)
             loaded_desc: list[str] = []
             if resolved_models:
                 loaded_desc.append(f"model_names={','.join(resolved_models)}")
@@ -275,6 +310,10 @@ class VoicePipeline:
                 score = 0.0
                 if scores:
                     wake_word_name, score = max(scores.items(), key=lambda kv: kv[1])
+                wake_word_name = self._wakeword_display_aliases.get(
+                    self._normalize_wake_model_name(wake_word_name),
+                    wake_word_name,
+                )
                 if score >= self.wake_threshold:
                     now = time.time()
                     if now - last_trigger_ts < self.wake_event_cooldown_seconds:

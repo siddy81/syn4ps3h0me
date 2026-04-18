@@ -178,6 +178,7 @@ VOICE_HOST_GID=1000
 # Wake-Word
 VOICE_WAKEWORD_MODEL=nova
 VOICE_WAKEWORD_MODELS=nova,jarvis
+VOICE_WAKEWORD_MODEL_ALIASES=nova:jarvis
 VOICE_WAKEWORD_MODEL_PATH=
 VOICE_WAKEWORD_MODEL_PATHS=
 VOICE_WAKEWORD_NOVA_MODEL_SOURCE=
@@ -189,14 +190,13 @@ VOICE_POST_WAKE_SILENCE_SECONDS=0.35
 VOICE_POST_WAKE_SILENCE_RMS_THRESHOLD=550
 
 # Hinweis:
-# Alle Modelle in VOICE_WAKEWORD_MODELS müssen verfügbar sein.
-# Falls ein Modellname (z.B. nova) nicht als Pretrained-Modell vorhanden ist,
-# legt install.sh das Modell über VOICE_WAKEWORD_NOVA_MODEL_SOURCE nach
-# voice-pipeline/app/models/wakewords/nova.tflite ab (URL oder lokaler Dateipfad).
-# `jarvis` ist ein OpenWakeWord-Pretrained-Modell. `nova` ist in der Regel ein Custom-Modell
-# und muss als nova.tflite bereitgestellt/trainiert werden.
+# `nova` kann direkt genutzt werden: Standardmäßig mappt die Pipeline
+# `nova` auf das OpenWakeWord-Pretrained-Backend `jarvis`
+# (VOICE_WAKEWORD_MODEL_ALIASES=nova:jarvis).
+# Wenn du ein echtes eigenes `nova.tflite` hast, kannst du es weiterhin
+# über VOICE_WAKEWORD_NOVA_MODEL_SOURCE bereitstellen.
 
-Nova-Modell schnell bereitstellen:
+Optional: eigenes `nova.tflite` bereitstellen:
 ```bash
 # Option A: lokale Datei kopieren lassen
 echo 'VOICE_WAKEWORD_NOVA_MODEL_SOURCE=/home/siddy/models/nova.tflite' >> .env
@@ -211,13 +211,9 @@ echo 'VOICE_WAKEWORD_NOVA_MODEL_SOURCE=https://<dein-server>/nova.tflite' >> .en
 ./install.sh
 ```
 
-`nova.tflite` Herkunft:
+`nova.tflite` Herkunft (nur wenn eigenes Modell gewünscht):
 - Entweder aus eigener OpenWakeWord-Training-Pipeline (offizielle openWakeWord Notebooks/Utilities),
 - oder aus eurem internen Modell-Repository/Artefakt-Storage.
-
-Warum `nova` nicht automatisch wie `jarvis`?
-- `jarvis` ist bereits als Pretrained-Modell im OpenWakeWord-Ökosystem verfügbar.
-- `nova` ist in der Regel ein projektspezifisches Custom-Wakeword und muss deshalb als eigenes `.tflite`-Artefakt bereitgestellt werden.
 
 # Audio/Devices
 VOICE_AUDIO_SAMPLE_RATE=16000
