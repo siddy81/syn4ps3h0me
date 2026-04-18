@@ -160,11 +160,14 @@ Das Skript erledigt automatisiert folgende Schritte:
 - Prüfe Container mit `docker compose ps`.
 - Falls Gruppenrechte neu sind: einmal ab- und wieder anmelden.
 
-### Voice-Pipeline: Wake-Word → Whisper → Router → LLM/Shelly
-Die Voice-Pipeline nutzt Wake-Word-Erkennung (Jarvis), transkribiert das Folgekommando lokal über `openai/whisper-base` und routet danach regelbasiert:
+### Voice-Pipeline: Wake-Word → Whisper → Function Calling → Orchestrierung
+Die Voice-Pipeline nutzt Wake-Word-Erkennung (Jarvis), transkribiert lokal per Whisper und verwendet dann **Qwen2-1.5B-Instruct-Function-Calling-v1** als reinen Intent-/Tool-Layer:
 
-- Smart-Home-Kommandos (z. B. „schalte das Licht in der Küche aus“) → Shelly REST
-- alle anderen Kommandos → lokales LLM `llama3.2:3b`
+- Das LLM kennt nur abstrahierte Tools (`switch_shelly_device`, `answer_with_llm`, `ask_for_clarification`).
+- Das LLM kennt **keine** internen REST-URLs, Header oder Tokens.
+- Die technische Geräteausführung (REST auf Shelly) läuft ausschließlich im Host-Code (Execution-Layer).
+- Normale Chat-Anfragen bleiben über `llama3.2:3b` möglich.
+- Das Function-Calling-Modell wird beim Start vorgeladen (kein Lazy Loading im ersten User-Request).
 
 Empfohlene `.env`-Einträge:
 ```env
@@ -196,7 +199,14 @@ VOICE_WHISPER_PRELOAD=true
 # LLM
 VOICE_LLM_BASE_URL=http://host.docker.internal:8000
 VOICE_LLM_MODEL=llama3.2:3b
+VOICE_FUNCTION_CALLING_MODEL=qwen2-1.5b-instruct-function-calling-v1
+VOICE_FUNCTION_CALLING_REQUIRE_HAILO=true
 VOICE_LLM_TIMEOUT_SECONDS=45
+
+# Device Registry API
+VOICE_DEVICE_REGISTRATION_TOKEN=CHANGE_ME
+VOICE_DEVICE_REGISTRY_PORT=8091
+VOICE_DEVICE_HEARTBEAT_TIMEOUT_SEC=90
 
 # Shelly-Routing
 SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json
@@ -215,6 +225,11 @@ VOICE_WAKE_BEEP_FREQUENCY_HZ=880
 VOICE_WAKE_BEEP_DURATION_MS=120
 VOICE_WAKE_BEEP_VOLUME=0.25
 ```
+
+Beispiel Sprachbefehle:
+- „Jarvis, schalte Wohnzimmerlicht an.“ → Tool `switch_shelly_device`
+- „Jarvis, erkläre mir Quantenverschränkung.“ → Tool `answer_with_llm`
+- „Jarvis, schalte das Licht an.“ (mehrdeutig) → Tool `ask_for_clarification`
 
 ### Shelly-Script bereitstellen
 

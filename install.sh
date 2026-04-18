@@ -24,6 +24,7 @@ SERVICE_FILE="/etc/systemd/system/hailo-ollama.service"
 DEB_URL="https://dev-public.hailo.ai/2025_12/Hailo10/hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEB_FILE="hailo_gen_ai_model_zoo_5.1.1_arm64.deb"
 DEFAULT_LLM_MODEL="llama3.2:3b"
+FUNCTION_CALLING_MODEL="qwen2-1.5b-instruct-function-calling-v1"
 ACTIVE_LLM_MODEL="${DEFAULT_LLM_MODEL}"
 
 HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
@@ -758,6 +759,60 @@ ensure_default_llm_model() {
   warn "Modelltest über /api/chat ist fehlgeschlagen. Bitte Modell-/Backend-Status prüfen."
 }
 
+ensure_function_calling_model() {
+  log "Prüfe, ob Function-Calling-Modell ${FUNCTION_CALLING_MODEL} verfügbar ist ..."
+  local tags_json
+  if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
+    fail "Konnte Modellliste nicht lesen. Function-Calling-Modell kann nicht verifiziert werden."
+  fi
+
+  if grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${FUNCTION_CALLING_MODEL}\"|\"${FUNCTION_CALLING_MODEL}\"" <<<"${tags_json}"; then
+    log "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} ist bereits vorhanden."
+    return
+  fi
+
+  fail "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} fehlt. Kein Lazy Loading erlaubt. Bitte Modell vorab auf dem Host bereitstellen."
+}
+
+verify_hailo10h_runtime() {
+  log "Verifiziere Hailo Runtime/Hardware (Hailo-10H erwartet) ..."
+
+  if ! command -v hailortcli >/dev/null 2>&1; then
+    fail "hailortcli fehlt. Hailo Runtime ist nicht installiert."
+  fi
+
+  local identify_output
+  if ! identify_output="$(hailortcli fw-control identify 2>&1)"; then
+    fail "Hailo Hardware-Identifikation fehlgeschlagen: ${identify_output}"
+  fi
+  log "hailortcli identify: ${identify_output}"
+
+  local hailo_list
+  if ! hailo_list="$(curl --silent --show-error --fail "http://localhost:8000/hailo/v1/list" 2>/dev/null)"; then
+    fail "Hailo API /hailo/v1/list nicht erreichbar."
+  fi
+  if ! grep -qi "10h" <<<"${hailo_list}"; then
+    fail "Hailo-10H wurde nicht eindeutig erkannt. Antwort: ${hailo_list}"
+  fi
+  log "Hailo API bestätigt: ${hailo_list}"
+}
+
+run_function_calling_smoke_test() {
+  log "Starte Function-Calling Smoke-Test (Qwen2-1.5B Function-Calling) ..."
+  local payload response
+  payload=$(cat <<EOF
+{"model":"${FUNCTION_CALLING_MODEL}","stream":false,"messages":[{"role":"system","content":"Antworte nur mit JSON-Tool-Call."},{"role":"user","content":"Schalte Wohnzimmerlicht an"}],"tools":[{"type":"function","function":{"name":"switch_shelly_device","description":"Schaltet ein Shelly-Gerät","parameters":{"type":"object","properties":{"room":{"type":"string"},"action":{"type":"string","enum":["on","off","toggle"]}},"required":["action"]}}}]}
+EOF
+)
+  if ! response="$(curl --silent --show-error --fail "http://localhost:8000/api/chat" -H "Content-Type: application/json" -d "${payload}")"; then
+    fail "Function-Calling Smoke-Test fehlgeschlagen (kein API-Response)."
+  fi
+  if ! grep -Eq "tool_calls|switch_shelly_device|ask_for_clarification|answer_with_llm" <<<"${response}"; then
+    fail "Function-Calling Smoke-Test fehlgeschlagen (keine Tool-Antwort): ${response}"
+  fi
+  log "Function-Calling Smoke-Test erfolgreich."
+}
+
 
 ensure_voice_env_defaults() {
   cd "${PROJECT_DIR}"
@@ -783,6 +838,8 @@ ensure_voice_env_defaults() {
     "VOICE_WHISPER_CACHE_DIR=/home/siddy/.cache/huggingface"
     "VOICE_LLM_BASE_URL=http://host.docker.internal:8000"
     "VOICE_LLM_MODEL=llama3.2:3b"
+    "VOICE_FUNCTION_CALLING_MODEL=${FUNCTION_CALLING_MODEL}"
+    "VOICE_FUNCTION_CALLING_REQUIRE_HAILO=true"
     "VOICE_LLM_TIMEOUT_SECONDS=45"
     "SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json"
     "SHELLY_DEVICE_MAP_JSON="
@@ -1027,6 +1084,9 @@ main() {
     enable_and_start_hailo_service
     wait_for_hailo_ollama
     ensure_default_llm_model
+    ensure_function_calling_model
+    verify_hailo10h_runtime
+    run_function_calling_smoke_test
   fi
 
   if [[ "${MODULE_VOICE}" == "true" || "${MODULE_LLM_CHAT}" == "true" ]]; then
