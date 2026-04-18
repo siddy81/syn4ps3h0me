@@ -47,6 +47,22 @@ class LlmClientTests(unittest.TestCase):
         self.assertEqual(calls[0], "http://127.0.0.1:8000/api/chat")
         self.assertEqual(calls[1], "http://host.docker.internal:8000/api/chat")
 
+    def test_chat_falls_back_to_v1_completion_on_api_500(self) -> None:
+        with patch.dict(os.environ, {"LLM_BASE_URL": "http://127.0.0.1:8000", "LLM_MODEL": "llama3.2:3b"}, clear=False):
+            client = OllamaClient()
+
+        def fake_urlopen(req, timeout=0):
+            if req.full_url.endswith("/api/chat"):
+                raise error.URLError("HTTP Error 500: Internal Server Error")
+            if req.full_url.endswith("/v1/chat/completions"):
+                return FakeResponse('{"choices":[{"message":{"content":"Hallo aus v1"}}]}')
+            raise AssertionError(f"unexpected url {req.full_url}")
+
+        with patch("app.integrations.llm_client.request.urlopen", side_effect=fake_urlopen):
+            response = client.chat("Sag hallo")
+
+        self.assertEqual(response, "Hallo aus v1")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -64,6 +64,19 @@ class OllamaClient:
                 logger.warning("GET %s fehlgeschlagen: %s", url, exc)
         raise RuntimeError(f"GET {path} fehlgeschlagen: {last_error}")
 
+    def _chat_v1(self, *, model: str, messages: list[dict[str, str]]) -> dict[str, Any]:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+        }
+        response = self._post_json("/v1/chat/completions", payload)
+        choices = response.get("choices", []) if isinstance(response, dict) else []
+        if not choices:
+            raise RuntimeError("v1 chat completion lieferte keine choices.")
+        message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+        return {"message": message}
+
     def preload_function_model(self) -> None:
         start = time.time()
         logger.info("Beginne Preload Function-Calling-Modell: %s", self.function_model)
@@ -97,12 +110,13 @@ class OllamaClient:
             raise RuntimeError("Function-Calling-Modell nicht ready (Preload/Warmup fehlt).")
 
     def chat(self, prompt: str) -> str:
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-        response = self._post_json("/api/chat", payload)
+        messages = [{"role": "user", "content": prompt}]
+        payload = {"model": self.model, "stream": False, "messages": messages}
+        try:
+            response = self._post_json("/api/chat", payload)
+        except RuntimeError as exc:
+            logger.warning("Fallback auf /v1/chat/completions für Chat-Antwort: %s", exc)
+            response = self._chat_v1(model=self.model, messages=messages)
         message = response.get("message", {})
         content = str(message.get("content", "")).strip()
         if not content:
@@ -142,7 +156,11 @@ class OllamaClient:
                     {"role": "user", "content": user_text},
                 ],
             }
-            response = self._post_json("/api/chat", fallback_payload)
+            try:
+                response = self._post_json("/api/chat", fallback_payload)
+            except RuntimeError as second_exc:
+                logger.warning("Fallback ohne tools[] über /api/chat fehlgeschlagen, versuche /v1/chat/completions: %s", second_exc)
+                response = self._chat_v1(model=active_model, messages=fallback_payload["messages"])
         message = response.get("message", {}) if isinstance(response, dict) else {}
 
         tool_calls = message.get("tool_calls") or []
