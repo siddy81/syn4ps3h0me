@@ -24,11 +24,13 @@ class FakeLlmClient:
     def __init__(self, tool_call):
         self.tool_call = tool_call
         self.ready_checked = False
+        self.tool_calls = 0
 
     def ensure_function_model_ready(self):
         self.ready_checked = True
 
     def chat_with_tools(self, user_text, tools, system_prompt, model=None):
+        self.tool_calls += 1
         return self.tool_call
 
     def chat(self, prompt: str) -> str:
@@ -109,3 +111,15 @@ def test_invalid_model_answer_fallback() -> None:
 
     assert result.action_type == "clarification"
     assert result.tool_call.name == "ask_for_clarification"
+
+
+def test_direct_shelly_intent_without_llm_for_clear_command() -> None:
+    llm = FakeLlmClient({"name": "answer_with_llm", "arguments": {"prompt": "ignored"}})
+    shelly = FakeShellyClient()
+    orchestrator = CommandOrchestrator(llm=llm, shelly=shelly, registry=_registry())
+
+    result = orchestrator.handle_text("Jarvis, mache das Wohnzimmerlicht an")
+
+    assert result.action_type == "device_action"
+    assert shelly.calls == [("wohnzimmer_licht", "on")]
+    assert llm.tool_calls == 0

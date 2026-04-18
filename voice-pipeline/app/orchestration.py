@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 
 from .device_registry import DeviceRegistry
@@ -38,6 +39,11 @@ class CommandOrchestrator:
     def handle_text(self, user_text: str) -> OrchestrationResult:
         self._llm.ensure_function_model_ready()
 
+        direct_intent = self._try_direct_shelly_intent(user_text)
+        if direct_intent is not None:
+            logger.info("Direkter Shelly-Intent erkannt (ohne LLM): %s", direct_intent)
+            return self._execute_validated_call(direct_intent)
+
         raw_model = self._llm.chat_with_tools(user_text=user_text, tools=build_tool_schemas(), system_prompt=SYSTEM_PROMPT)
         logger.info("User-Text: %s", user_text)
         logger.info("Modellrohantwort: %s", json.dumps(raw_model, ensure_ascii=False))
@@ -57,6 +63,9 @@ class CommandOrchestrator:
 
         logger.info("Validierter Tool-Call: %s", validated)
 
+        return self._execute_validated_call(validated)
+
+    def _execute_validated_call(self, validated: ValidatedToolCall) -> OrchestrationResult:
         if validated.name == "answer_with_llm":
             answer = self._llm.chat(validated.arguments["prompt"])
             return OrchestrationResult(speech_text=answer, action_type="chat", tool_call=validated)
@@ -117,3 +126,38 @@ class CommandOrchestrator:
         speech = f"{device.id} wurde {spoken_action}."
         logger.info("Resultierende Aktion: %s", speech)
         return OrchestrationResult(speech_text=speech, action_type="device_action", tool_call=validated)
+
+    def _try_direct_shelly_intent(self, user_text: str) -> ValidatedToolCall | None:
+        text = user_text.strip().lower()
+        if not text:
+            return None
+
+        if not re.search(r"\b(schalte|schalt|mache|mach|stelle|stell|toggle|umschalten)\b", text):
+            return None
+
+        action = None
+        if re.search(r"\b(aus|ausschalten)\b", text):
+            action = "off"
+        elif re.search(r"\b(an|ein|einschalten)\b", text):
+            action = "on"
+        elif re.search(r"\b(toggle|umschalten)\b", text):
+            action = "toggle"
+        if action is None:
+            return None
+
+        matches = []
+        for device in self._registry.all_devices():
+            if device.room and device.room.lower() in text:
+                matches.append(device)
+                continue
+            if device.group and device.group.lower() in text:
+                matches.append(device)
+                continue
+            if any(alias.lower() in text for alias in device.aliases):
+                matches.append(device)
+
+        unique = {d.id: d for d in matches}
+        if len(unique) == 1:
+            device = next(iter(unique.values()))
+            return ValidatedToolCall(name="switch_shelly_device", arguments={"device_id": device.id, "action": action})
+        return None
