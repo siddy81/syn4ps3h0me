@@ -771,7 +771,23 @@ ensure_function_calling_model() {
     return
   fi
 
-  fail "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} fehlt. Kein Lazy Loading erlaubt. Bitte Modell vorab auf dem Host bereitstellen."
+  log "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} fehlt. Starte Vorab-Download während der Installation ..."
+  if ! curl --silent --show-error --fail \
+      "http://localhost:8000/api/pull" \
+      -H "Content-Type: application/json" \
+      -d "{ \"model\": \"${FUNCTION_CALLING_MODEL}\", \"stream\" : true }" >/dev/null; then
+    fail "Download von ${FUNCTION_CALLING_MODEL} fehlgeschlagen. Bitte Netzwerkzugang prüfen und erneut ausführen."
+  fi
+
+  if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
+    fail "Nach Download konnte die Modellliste nicht erneut gelesen werden."
+  fi
+
+  if ! grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${FUNCTION_CALLING_MODEL}\"|\"${FUNCTION_CALLING_MODEL}\"" <<<"${tags_json}"; then
+    fail "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} ist nach Download weiterhin nicht verfügbar. Prüfe /api/tags und Hailo-Ollama Logs."
+  fi
+
+  log "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} wurde erfolgreich vorinstalliert."
 }
 
 verify_hailo10h_runtime() {
