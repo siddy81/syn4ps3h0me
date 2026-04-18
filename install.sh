@@ -61,6 +61,47 @@ log()  { echo "[INFO]  $*"; }
 warn() { echo "[WARN]  $*" >&2; }
 fail() { echo "[ERROR] $*" >&2; exit 1; }
 
+model_present_in_tags() {
+  local tags_json="$1"
+  local wanted_model="$2"
+  TAGS_JSON="${tags_json}" WANTED_MODEL="${wanted_model}" python3 - <<'PY'
+import json
+import os
+import sys
+
+raw = os.environ.get("TAGS_JSON", "")
+wanted = os.environ.get("WANTED_MODEL", "").strip().lower()
+if not raw or not wanted:
+    sys.exit(1)
+
+def canonical(name: str) -> str:
+    n = name.strip().lower()
+    if ":" in n:
+        n = n.split(":", 1)[0]
+    return n
+
+try:
+    payload = json.loads(raw)
+except Exception:
+    sys.exit(1)
+
+names = []
+for item in payload.get("models", []):
+    if isinstance(item, dict) and item.get("name"):
+        names.append(str(item["name"]))
+
+wanted_c = canonical(wanted)
+for name in names:
+    cur = canonical(name)
+    if cur == wanted_c:
+        sys.exit(0)
+    if wanted_c in cur:
+        sys.exit(0)
+
+sys.exit(1)
+PY
+}
+
 wait_with_progress() {
   local pid="$1"
   local message="$2"
@@ -762,32 +803,56 @@ ensure_default_llm_model() {
 ensure_function_calling_model() {
   log "Prüfe, ob Function-Calling-Modell ${FUNCTION_CALLING_MODEL} verfügbar ist ..."
   local tags_json
+  local candidate
+  local candidates_csv
+  local max_checks=60
+  local check_no
+
   if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
     fail "Konnte Modellliste nicht lesen. Function-Calling-Modell kann nicht verifiziert werden."
   fi
 
-  if grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${FUNCTION_CALLING_MODEL}\"|\"${FUNCTION_CALLING_MODEL}\"" <<<"${tags_json}"; then
+  if model_present_in_tags "${tags_json}" "${FUNCTION_CALLING_MODEL}"; then
     log "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} ist bereits vorhanden."
     return
   fi
 
-  log "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} fehlt. Starte Vorab-Download während der Installation ..."
-  if ! curl --silent --show-error --fail \
-      "http://localhost:8000/api/pull" \
-      -H "Content-Type: application/json" \
-      -d "{ \"model\": \"${FUNCTION_CALLING_MODEL}\", \"stream\" : true }" >/dev/null; then
-    fail "Download von ${FUNCTION_CALLING_MODEL} fehlgeschlagen. Bitte Netzwerkzugang prüfen und erneut ausführen."
-  fi
+  candidates_csv="${FUNCTION_CALLING_MODEL_CANDIDATES:-${FUNCTION_CALLING_MODEL},Qwen2-1.5B-Instruct-Function-Calling-v1,qwen2-1.5b-instruct-function-calling-v1:latest}"
+
+  IFS=',' read -r -a _candidates <<<"${candidates_csv}"
+  for candidate in "${_candidates[@]}"; do
+    candidate="$(echo "${candidate}" | xargs)"
+    [[ -n "${candidate}" ]] || continue
+    log "Function-Calling-Modell-Kandidat fehlt: ${candidate}. Starte Vorab-Download ..."
+
+    if ! curl --silent --show-error --fail \
+        "http://localhost:8000/api/pull" \
+        -H "Content-Type: application/json" \
+        -d "{ \"model\": \"${candidate}\", \"stream\" : true }" >/dev/null; then
+      warn "Download für Kandidat fehlgeschlagen: ${candidate}"
+      continue
+    fi
+
+    for ((check_no=1; check_no<=max_checks; check_no++)); do
+      if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
+        sleep 1
+        continue
+      fi
+      if model_present_in_tags "${tags_json}" "${candidate}"; then
+        FUNCTION_CALLING_MODEL="${candidate}"
+        log "Function-Calling-Modell erfolgreich vorinstalliert und verifiziert: ${FUNCTION_CALLING_MODEL}"
+        return
+      fi
+      sleep 1
+    done
+    warn "Kandidat nach Download nicht in /api/tags sichtbar: ${candidate}"
+  done
 
   if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
     fail "Nach Download konnte die Modellliste nicht erneut gelesen werden."
   fi
 
-  if ! grep -Eq "\"name\"[[:space:]]*:[[:space:]]*\"${FUNCTION_CALLING_MODEL}\"|\"${FUNCTION_CALLING_MODEL}\"" <<<"${tags_json}"; then
-    fail "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} ist nach Download weiterhin nicht verfügbar. Prüfe /api/tags und Hailo-Ollama Logs."
-  fi
-
-  log "Function-Calling-Modell ${FUNCTION_CALLING_MODEL} wurde erfolgreich vorinstalliert."
+  fail "Kein Function-Calling-Modell konnte vorbereitet werden. Geprüfte Kandidaten: ${candidates_csv}. Prüfe /api/tags, Netzwerk und hailo-ollama Logs."
 }
 
 verify_hailo10h_runtime() {
