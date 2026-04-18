@@ -901,6 +901,8 @@ ensure_function_calling_model() {
   local pull_not_found_count=0
   local candidate_count=0
   local runtime_models=""
+  local allow_fc_fallback=""
+  local fallback_candidate=""
 
   if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
     fail "Konnte Modellliste nicht lesen. Function-Calling-Modell kann nicht verifiziert werden."
@@ -976,7 +978,18 @@ ensure_function_calling_model() {
   fi
 
   if [[ "${pull_not_found_count}" -ge "${candidate_count}" ]]; then
-    fail "Kein Kandidat ist in deiner hailo-ollama Version verfügbar (alle Pulls = 'model not found'). Runtime-Modelle laut /hailo/v1/list: ${runtime_models:-<leer>}. Bitte hailo_gen_ai_model_zoo/hailo-ollama auf eine Version mit Qwen2 Function-Calling aktualisieren oder VOICE_FUNCTION_CALLING_MODEL auf ein tatsächlich gelistetes FC-Modell setzen."
+    allow_fc_fallback="$(echo "${VOICE_ALLOW_FUNCTION_MODEL_FALLBACK:-true}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "${allow_fc_fallback}" == "true" ]]; then
+      for fallback_candidate in qwen2:1.5b qwen2.5-instruct:1.5b llama3.2:3b; do
+        if grep -qx "${fallback_candidate}" <<<"${runtime_models}"; then
+          FUNCTION_CALLING_MODEL="${fallback_candidate}"
+          warn "Function-Calling-Modell aktuell nicht verfügbar. Nutze expliziten Übergangs-Fallback: ${FUNCTION_CALLING_MODEL}. Bitte später auf Qwen2-Function-Calling upgraden."
+          return
+        fi
+      done
+    fi
+
+    fail "Kein Kandidat ist in deiner hailo-ollama Version verfügbar (alle Pulls = 'model not found'). Runtime-Modelle laut /hailo/v1/list: ${runtime_models:-<leer>}. Bitte hailo_gen_ai_model_zoo/hailo-ollama auf eine Version mit Qwen2 Function-Calling aktualisieren oder VOICE_FUNCTION_CALLING_MODEL auf ein tatsächlich gelistetes FC-Modell setzen. Optionaler Übergang: VOICE_ALLOW_FUNCTION_MODEL_FALLBACK=true."
   fi
 
   fail "Kein Function-Calling-Modell konnte vorbereitet werden. Geprüfte Kandidaten: ${candidates_csv}. Bitte prüfe 'curl http://localhost:8000/hailo/v1/list' und 'curl http://localhost:8000/api/tags' und setze VOICE_FUNCTION_CALLING_MODEL auf den dort sichtbaren Modellnamen."
@@ -1047,6 +1060,7 @@ ensure_voice_env_defaults() {
     "VOICE_LLM_BASE_URL=http://host.docker.internal:8000"
     "VOICE_LLM_MODEL=llama3.2:3b"
     "VOICE_FUNCTION_CALLING_MODEL=${FUNCTION_CALLING_MODEL}"
+    "VOICE_ALLOW_FUNCTION_MODEL_FALLBACK=true"
     "VOICE_FUNCTION_CALLING_REQUIRE_HAILO=true"
     "VOICE_LLM_TIMEOUT_SECONDS=45"
     "SHELLY_DEVICE_MAP_FILE=/app/app/config/shelly_devices.json"
