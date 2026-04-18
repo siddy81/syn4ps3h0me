@@ -102,6 +102,63 @@ sys.exit(1)
 PY
 }
 
+detect_available_function_model() {
+  local tags_json="${1:-}"
+  local hailo_json="${2:-}"
+  TAGS_JSON="${tags_json}" HAILO_JSON="${hailo_json}" python3 - <<'PY'
+import json
+import os
+
+tags_raw = os.environ.get("TAGS_JSON", "")
+hailo_raw = os.environ.get("HAILO_JSON", "")
+
+def canonical(text: str) -> str:
+    t = text.strip().lower()
+    if ":" in t:
+        t = t.split(":", 1)[0]
+    return t
+
+def collect_strings(obj):
+    if isinstance(obj, dict):
+        for v in obj.values():
+            yield from collect_strings(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from collect_strings(v)
+    elif isinstance(obj, str):
+        yield obj
+
+def load_json(raw):
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+tags = load_json(tags_raw)
+hailo = load_json(hailo_raw)
+
+models = []
+for item in tags.get("models", []):
+    if isinstance(item, dict) and item.get("name"):
+        models.append(str(item["name"]))
+
+models.extend(collect_strings(hailo))
+
+def is_fc_qwen_candidate(name: str) -> bool:
+    n = canonical(name)
+    return "qwen2" in n and "1.5" in n and ("function" in n or "tool" in n)
+
+for name in models:
+    if is_fc_qwen_candidate(name):
+        print(name.strip())
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
 wait_with_progress() {
   local pid="$1"
   local message="$2"
@@ -803,13 +860,23 @@ ensure_default_llm_model() {
 ensure_function_calling_model() {
   log "Prüfe, ob Function-Calling-Modell ${FUNCTION_CALLING_MODEL} verfügbar ist ..."
   local tags_json
+  local hailo_json=""
   local candidate
   local candidates_csv
   local max_checks=60
   local check_no
+  local pull_response=""
+  local detected_model=""
 
   if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
     fail "Konnte Modellliste nicht lesen. Function-Calling-Modell kann nicht verifiziert werden."
+  fi
+
+  hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
+  if detected_model="$(detect_available_function_model "${tags_json}" "${hailo_json}" 2>/dev/null)"; then
+    FUNCTION_CALLING_MODEL="${detected_model}"
+    log "Verwende bereits verfügbares Function-Calling-Modell aus Runtime-Liste: ${FUNCTION_CALLING_MODEL}"
+    return
   fi
 
   if model_present_in_tags "${tags_json}" "${FUNCTION_CALLING_MODEL}"; then
@@ -825,11 +892,15 @@ ensure_function_calling_model() {
     [[ -n "${candidate}" ]] || continue
     log "Function-Calling-Modell-Kandidat fehlt: ${candidate}. Starte Vorab-Download ..."
 
-    if ! curl --silent --show-error --fail \
+    if ! pull_response="$(curl --silent --show-error --fail \
         "http://localhost:8000/api/pull" \
         -H "Content-Type: application/json" \
-        -d "{ \"model\": \"${candidate}\", \"stream\" : true }" >/dev/null; then
+        -d "{ \"model\": \"${candidate}\", \"stream\" : true }" 2>&1)"; then
       warn "Download für Kandidat fehlgeschlagen: ${candidate}"
+      continue
+    fi
+    if grep -qi "\"error\"" <<<"${pull_response}"; then
+      warn "Pull-API meldete Fehler für Kandidat ${candidate}: ${pull_response}"
       continue
     fi
 
@@ -837,6 +908,12 @@ ensure_function_calling_model() {
       if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
         sleep 1
         continue
+      fi
+      hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
+      if detected_model="$(detect_available_function_model "${tags_json}" "${hailo_json}" 2>/dev/null)"; then
+        FUNCTION_CALLING_MODEL="${detected_model}"
+        log "Function-Calling-Modell erfolgreich vorinstalliert und in Runtime erkannt: ${FUNCTION_CALLING_MODEL}"
+        return
       fi
       if model_present_in_tags "${tags_json}" "${candidate}"; then
         FUNCTION_CALLING_MODEL="${candidate}"
@@ -851,8 +928,14 @@ ensure_function_calling_model() {
   if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
     fail "Nach Download konnte die Modellliste nicht erneut gelesen werden."
   fi
+  hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
+  if detected_model="$(detect_available_function_model "${tags_json}" "${hailo_json}" 2>/dev/null)"; then
+    FUNCTION_CALLING_MODEL="${detected_model}"
+    log "Function-Calling-Modell aus Runtime-Listung erkannt: ${FUNCTION_CALLING_MODEL}"
+    return
+  fi
 
-  fail "Kein Function-Calling-Modell konnte vorbereitet werden. Geprüfte Kandidaten: ${candidates_csv}. Prüfe /api/tags, Netzwerk und hailo-ollama Logs."
+  fail "Kein Function-Calling-Modell konnte vorbereitet werden. Geprüfte Kandidaten: ${candidates_csv}. Bitte prüfe 'curl http://localhost:8000/hailo/v1/list' und 'curl http://localhost:8000/api/tags' und setze VOICE_FUNCTION_CALLING_MODEL auf den dort sichtbaren Modellnamen."
 }
 
 verify_hailo10h_runtime() {
