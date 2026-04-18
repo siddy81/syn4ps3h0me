@@ -185,8 +185,10 @@ VOICE_POST_WAKE_SILENCE_SECONDS=0.35
 VOICE_POST_WAKE_SILENCE_RMS_THRESHOLD=550
 
 # Note:
-# If one wakeword model from WAKEWORD_MODELS is not available locally,
-# the pipeline will continue with available models and log missing ones as warnings.
+# All models listed in VOICE_WAKEWORD_MODELS must be available.
+# If a model name (e.g. nova) is not available as a pretrained model,
+# provide `/app/app/models/wakewords/<name>.tflite`
+# (repo path example: `voice-pipeline/app/models/wakewords/nova.tflite`) or set VOICE_WAKEWORD_MODEL_PATHS explicitly.
 
 # Audio/Devices
 VOICE_AUDIO_SAMPLE_RATE=16000

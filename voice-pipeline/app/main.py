@@ -151,6 +151,7 @@ class VoicePipeline:
                 return True
 
             resolved_models: list[str] = []
+            resolved_model_paths: list[str] = []
             rejected_models: list[str] = []
             for model_name in self.wake_model_names:
                 try:
@@ -158,17 +159,32 @@ class VoicePipeline:
                     Model(wakeword_models=[model_name])
                     resolved_models.append(model_name)
                 except Exception as exc:
-                    rejected_models.append(f"{model_name} ({exc})")
+                    fallback_path = Path("/app/app/models/wakewords", f"{model_name}.tflite")
+                    if fallback_path.exists():
+                        resolved_model_paths.append(str(fallback_path))
+                        logger.info("Wakeword-Modell '%s' wird über lokalen Pfad geladen: %s", model_name, fallback_path)
+                    else:
+                        rejected_models.append(f"{model_name} ({exc}; erwartet z.B. {fallback_path})")
 
-            if not resolved_models:
+            if not resolved_models and not resolved_model_paths:
                 logger.error("Kein konfiguriertes Wakeword-Modell konnte geladen werden: %s", ", ".join(rejected_models))
                 return False
 
             if rejected_models:
-                logger.warning("Nicht verfügbare Wakeword-Modelle werden ignoriert: %s", "; ".join(rejected_models))
+                logger.error(
+                    "Nicht verfügbare Wakeword-Modelle: %s. "
+                    "Bitte passende Modelle bereitstellen (z.B. WAKEWORD_MODEL_PATHS=/app/app/models/wakewords/<name>.tflite).",
+                    "; ".join(rejected_models),
+                )
+                return False
 
-            self._model = Model(wakeword_models=resolved_models)
-            logger.info("Wakeword über Modellnamen geladen: %s", ", ".join(resolved_models))
+            self._model = Model(wakeword_models=resolved_models, wakeword_model_paths=resolved_model_paths)
+            loaded_desc: list[str] = []
+            if resolved_models:
+                loaded_desc.append(f"model_names={','.join(resolved_models)}")
+            if resolved_model_paths:
+                loaded_desc.append(f"model_paths={','.join(resolved_model_paths)}")
+            logger.info("Wakeword geladen: %s", " | ".join(loaded_desc))
             return True
         except Exception as exc:
             logger.error("Wakeword-Laden fehlgeschlagen: %s", exc)
