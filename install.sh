@@ -190,6 +190,27 @@ for m in models:
 PY
 }
 
+extract_tag_models() {
+  local tags_json="${1:-}"
+  TAGS_JSON="${tags_json}" python3 - <<'PY'
+import json
+import os
+
+raw = os.environ.get("TAGS_JSON", "")
+if not raw:
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(raw)
+except Exception:
+    raise SystemExit(0)
+
+for item in payload.get("models", []):
+    if isinstance(item, dict) and isinstance(item.get("name"), str):
+        print(item["name"])
+PY
+}
+
 wait_with_progress() {
   local pid="$1"
   local message="$2"
@@ -901,12 +922,14 @@ ensure_function_calling_model() {
   local pull_not_found_count=0
   local candidate_count=0
   local runtime_models=""
+  local tag_models=""
   local allow_fc_fallback=""
   local fallback_candidate=""
 
   if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
     fail "Konnte Modellliste nicht lesen. Function-Calling-Modell kann nicht verifiziert werden."
   fi
+  tag_models="$(extract_tag_models "${tags_json}")"
 
   hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
   runtime_models="$(extract_hailo_runtime_models "${hailo_json}")"
@@ -969,6 +992,7 @@ ensure_function_calling_model() {
   if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
     fail "Nach Download konnte die Modellliste nicht erneut gelesen werden."
   fi
+  tag_models="$(extract_tag_models "${tags_json}")"
   hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
   runtime_models="$(extract_hailo_runtime_models "${hailo_json}")"
   if detected_model="$(detect_available_function_model "${tags_json}" "${hailo_json}" 2>/dev/null)"; then
@@ -981,15 +1005,15 @@ ensure_function_calling_model() {
     allow_fc_fallback="$(echo "${VOICE_ALLOW_FUNCTION_MODEL_FALLBACK:-true}" | tr '[:upper:]' '[:lower:]')"
     if [[ "${allow_fc_fallback}" == "true" ]]; then
       for fallback_candidate in qwen2:1.5b qwen2.5-instruct:1.5b llama3.2:3b; do
-        if grep -qx "${fallback_candidate}" <<<"${runtime_models}"; then
+        if grep -qx "${fallback_candidate}" <<<"${tag_models}"; then
           FUNCTION_CALLING_MODEL="${fallback_candidate}"
-          warn "Function-Calling-Modell aktuell nicht verfügbar. Nutze expliziten Übergangs-Fallback: ${FUNCTION_CALLING_MODEL}. Bitte später auf Qwen2-Function-Calling upgraden."
+          warn "Function-Calling-Modell aktuell nicht verfügbar. Nutze expliziten Übergangs-Fallback aus /api/tags: ${FUNCTION_CALLING_MODEL}. Bitte später auf Qwen2-Function-Calling upgraden."
           return
         fi
       done
     fi
 
-    fail "Kein Kandidat ist in deiner hailo-ollama Version verfügbar (alle Pulls = 'model not found'). Runtime-Modelle laut /hailo/v1/list: ${runtime_models:-<leer>}. Bitte hailo_gen_ai_model_zoo/hailo-ollama auf eine Version mit Qwen2 Function-Calling aktualisieren oder VOICE_FUNCTION_CALLING_MODEL auf ein tatsächlich gelistetes FC-Modell setzen. Optionaler Übergang: VOICE_ALLOW_FUNCTION_MODEL_FALLBACK=true."
+    fail "Kein Kandidat ist in deiner hailo-ollama Version verfügbar (alle Pulls = 'model not found'). Modelle in /api/tags: ${tag_models:-<leer>}; Runtime-Modelle in /hailo/v1/list: ${runtime_models:-<leer>}. Bitte hailo_gen_ai_model_zoo/hailo-ollama auf eine Version mit Qwen2 Function-Calling aktualisieren oder VOICE_FUNCTION_CALLING_MODEL auf ein tatsächlich in /api/tags vorhandenes Modell setzen. Optionaler Übergang: VOICE_ALLOW_FUNCTION_MODEL_FALLBACK=true."
   fi
 
   fail "Kein Function-Calling-Modell konnte vorbereitet werden. Geprüfte Kandidaten: ${candidates_csv}. Bitte prüfe 'curl http://localhost:8000/hailo/v1/list' und 'curl http://localhost:8000/api/tags' und setze VOICE_FUNCTION_CALLING_MODEL auf den dort sichtbaren Modellnamen."
