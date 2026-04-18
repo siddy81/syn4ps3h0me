@@ -212,6 +212,10 @@ Where `nova.tflite` comes from:
 - either your own OpenWakeWord custom training pipeline (official openWakeWord notebooks/utilities),
 - or your internal model repository / artifact storage.
 
+Why `nova` is not automatic like `jarvis`:
+- `jarvis` is available as a pretrained model in the OpenWakeWord ecosystem.
+- `nova` is usually a project-specific custom wakeword, so it must be provided as its own `.tflite` artifact.
+
 # Audio/Devices
 VOICE_AUDIO_SAMPLE_RATE=16000
 VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30

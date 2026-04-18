@@ -906,6 +906,7 @@ ensure_wakeword_model_artifacts() {
   source_value="$(read_env_key "VOICE_WAKEWORD_NOVA_MODEL_SOURCE" "${ENV_FILE}")"
   if [[ -z "${source_value}" ]]; then
     fail "Wakeword 'nova' ist konfiguriert, aber ${target_path} fehlt.
+Grund: 'jarvis' ist als OpenWakeWord-Pretrained-Modell verfügbar, 'nova' normalerweise nicht.
 Setze in ${ENV_FILE} z.B.:
   VOICE_WAKEWORD_NOVA_MODEL_SOURCE=/home/siddy/models/nova.tflite
 oder:

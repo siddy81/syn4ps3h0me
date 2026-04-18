@@ -215,6 +215,10 @@ echo 'VOICE_WAKEWORD_NOVA_MODEL_SOURCE=https://<dein-server>/nova.tflite' >> .en
 - Entweder aus eigener OpenWakeWord-Training-Pipeline (offizielle openWakeWord Notebooks/Utilities),
 - oder aus eurem internen Modell-Repository/Artefakt-Storage.
 
+Warum `nova` nicht automatisch wie `jarvis`?
+- `jarvis` ist bereits als Pretrained-Modell im OpenWakeWord-Ökosystem verfügbar.
+- `nova` ist in der Regel ein projektspezifisches Custom-Wakeword und muss deshalb als eigenes `.tflite`-Artefakt bereitgestellt werden.
+
 # Audio/Devices
 VOICE_AUDIO_SAMPLE_RATE=16000
 VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30
