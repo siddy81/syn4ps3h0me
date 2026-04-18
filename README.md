@@ -193,6 +193,8 @@ VOICE_POST_WAKE_SILENCE_RMS_THRESHOLD=550
 # Falls ein Modellname (z.B. nova) nicht als Pretrained-Modell vorhanden ist,
 # legt install.sh das Modell über VOICE_WAKEWORD_NOVA_MODEL_SOURCE nach
 # voice-pipeline/app/models/wakewords/nova.tflite ab (URL oder lokaler Dateipfad).
+# `jarvis` ist ein OpenWakeWord-Pretrained-Modell. `nova` ist in der Regel ein Custom-Modell
+# und muss als nova.tflite bereitgestellt/trainiert werden.
 
 Nova-Modell schnell bereitstellen:
 ```bash
@@ -203,7 +205,15 @@ echo 'VOICE_WAKEWORD_NOVA_MODEL_SOURCE=/home/siddy/models/nova.tflite' >> .env
 # Option B: Download-URL verwenden
 echo 'VOICE_WAKEWORD_NOVA_MODEL_SOURCE=https://<dein-server>/nova.tflite' >> .env
 ./install.sh
+
+# Option C: mit Hilfsskript bereitstellen
+./scripts/provision_nova_wakeword.sh --source /home/siddy/models/nova.tflite
+./install.sh
 ```
+
+`nova.tflite` Herkunft:
+- Entweder aus eigener OpenWakeWord-Training-Pipeline (offizielle openWakeWord Notebooks/Utilities),
+- oder aus eurem internen Modell-Repository/Artefakt-Storage.
 
 # Audio/Devices
 VOICE_AUDIO_SAMPLE_RATE=16000
