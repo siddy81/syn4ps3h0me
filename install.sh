@@ -159,6 +159,37 @@ raise SystemExit(1)
 PY
 }
 
+extract_hailo_runtime_models() {
+  local hailo_json="${1:-}"
+  HAILO_JSON="${hailo_json}" python3 - <<'PY'
+import json
+import os
+
+raw = os.environ.get("HAILO_JSON", "")
+if not raw:
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(raw)
+except Exception:
+    raise SystemExit(0)
+
+models = []
+if isinstance(payload, dict):
+    if isinstance(payload.get("models"), list):
+        for item in payload["models"]:
+            if isinstance(item, str):
+                models.append(item)
+            elif isinstance(item, dict):
+                for key in ("name", "model"):
+                    if isinstance(item.get(key), str):
+                        models.append(item[key])
+                        break
+for m in models:
+    print(m)
+PY
+}
+
 wait_with_progress() {
   local pid="$1"
   local message="$2"
@@ -867,12 +898,16 @@ ensure_function_calling_model() {
   local check_no
   local pull_response=""
   local detected_model=""
+  local pull_not_found_count=0
+  local candidate_count=0
+  local runtime_models=""
 
   if ! tags_json="$(curl --silent --show-error --fail "http://localhost:8000/api/tags" 2>/dev/null)"; then
     fail "Konnte Modellliste nicht lesen. Function-Calling-Modell kann nicht verifiziert werden."
   fi
 
   hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
+  runtime_models="$(extract_hailo_runtime_models "${hailo_json}")"
   if detected_model="$(detect_available_function_model "${tags_json}" "${hailo_json}" 2>/dev/null)"; then
     FUNCTION_CALLING_MODEL="${detected_model}"
     log "Verwende bereits verfügbares Function-Calling-Modell aus Runtime-Liste: ${FUNCTION_CALLING_MODEL}"
@@ -887,6 +922,7 @@ ensure_function_calling_model() {
   candidates_csv="${FUNCTION_CALLING_MODEL_CANDIDATES:-${FUNCTION_CALLING_MODEL},Qwen2-1.5B-Instruct-Function-Calling-v1,qwen2-1.5b-instruct-function-calling-v1:latest}"
 
   IFS=',' read -r -a _candidates <<<"${candidates_csv}"
+  candidate_count="${#_candidates[@]}"
   for candidate in "${_candidates[@]}"; do
     candidate="$(echo "${candidate}" | xargs)"
     [[ -n "${candidate}" ]] || continue
@@ -901,6 +937,9 @@ ensure_function_calling_model() {
     fi
     if grep -qi "\"error\"" <<<"${pull_response}"; then
       warn "Pull-API meldete Fehler für Kandidat ${candidate}: ${pull_response}"
+      if grep -qi "not found" <<<"${pull_response}"; then
+        pull_not_found_count=$((pull_not_found_count + 1))
+      fi
       continue
     fi
 
@@ -929,10 +968,15 @@ ensure_function_calling_model() {
     fail "Nach Download konnte die Modellliste nicht erneut gelesen werden."
   fi
   hailo_json="$(curl --silent "http://localhost:8000/hailo/v1/list" 2>/dev/null || true)"
+  runtime_models="$(extract_hailo_runtime_models "${hailo_json}")"
   if detected_model="$(detect_available_function_model "${tags_json}" "${hailo_json}" 2>/dev/null)"; then
     FUNCTION_CALLING_MODEL="${detected_model}"
     log "Function-Calling-Modell aus Runtime-Listung erkannt: ${FUNCTION_CALLING_MODEL}"
     return
+  fi
+
+  if [[ "${pull_not_found_count}" -ge "${candidate_count}" ]]; then
+    fail "Kein Kandidat ist in deiner hailo-ollama Version verfügbar (alle Pulls = 'model not found'). Runtime-Modelle laut /hailo/v1/list: ${runtime_models:-<leer>}. Bitte hailo_gen_ai_model_zoo/hailo-ollama auf eine Version mit Qwen2 Function-Calling aktualisieren oder VOICE_FUNCTION_CALLING_MODEL auf ein tatsächlich gelistetes FC-Modell setzen."
   fi
 
   fail "Kein Function-Calling-Modell konnte vorbereitet werden. Geprüfte Kandidaten: ${candidates_csv}. Bitte prüfe 'curl http://localhost:8000/hailo/v1/list' und 'curl http://localhost:8000/api/tags' und setze VOICE_FUNCTION_CALLING_MODEL auf den dort sichtbaren Modellnamen."
