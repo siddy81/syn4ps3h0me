@@ -191,6 +191,17 @@ VOICE_POST_WAKE_SILENCE_RMS_THRESHOLD=550
 # install.sh can provision it from VOICE_WAKEWORD_NOVA_MODEL_SOURCE
 # into `voice-pipeline/app/models/wakewords/nova.tflite` (URL or local file path).
 
+Quick way to provide the Nova model:
+```bash
+# Option A: use a local file
+echo 'VOICE_WAKEWORD_NOVA_MODEL_SOURCE=/home/siddy/models/nova.tflite' >> .env
+./install.sh
+
+# Option B: use a download URL
+echo 'VOICE_WAKEWORD_NOVA_MODEL_SOURCE=https://<your-server>/nova.tflite' >> .env
+./install.sh
+```
+
 # Audio/Devices
 VOICE_AUDIO_SAMPLE_RATE=16000
 VOICE_AUDIO_DEVICE_REFRESH_SECONDS=30
