@@ -33,6 +33,14 @@ logger = logging.getLogger("voice_pipeline")
 
 
 class VoicePipeline:
+    @staticmethod
+    def _normalize_wake_model_name(name: str) -> str:
+        candidate = name.strip()
+        lowered = candidate.lower().replace(" ", "_")
+        if lowered in {"nova", "jarvis"}:
+            return f"hey_{lowered}"
+        return candidate
+
     def __init__(self) -> None:
         self.sample_rate = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
         self.wake_threshold = float(os.getenv("WAKE_WORD_THRESHOLD", "0.5"))
@@ -42,9 +50,9 @@ class VoicePipeline:
         self.post_wake_silence_seconds = float(os.getenv("POST_WAKE_SILENCE_SECONDS", "0.35"))
         self.post_wake_silence_rms_threshold = float(os.getenv("POST_WAKE_SILENCE_RMS_THRESHOLD", "550"))
         wakeword_models_env = os.getenv("WAKEWORD_MODELS", os.getenv("WAKEWORD_MODEL", "hey_nova"))
-        self.wake_model_names = [w.strip() for w in wakeword_models_env.split(",") if w.strip()]
+        self.wake_model_names = [self._normalize_wake_model_name(w) for w in wakeword_models_env.split(",") if w.strip()]
         if not self.wake_model_names:
-            self.wake_model_names = ["hey_nova"]
+            self.wake_model_names = [self._normalize_wake_model_name("nova")]
         self.wake_model_path = os.getenv("WAKEWORD_MODEL_PATH", "").strip()
         self.wake_model_paths = [p.strip() for p in os.getenv("WAKEWORD_MODEL_PATHS", "").split(",") if p.strip()]
         self.device_refresh_seconds = int(os.getenv("AUDIO_DEVICE_REFRESH_SECONDS", "30"))
