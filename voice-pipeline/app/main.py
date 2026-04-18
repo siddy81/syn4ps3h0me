@@ -36,10 +36,7 @@ class VoicePipeline:
     @staticmethod
     def _normalize_wake_model_name(name: str) -> str:
         candidate = name.strip()
-        lowered = candidate.lower().replace(" ", "_")
-        if lowered in {"nova", "jarvis"}:
-            return f"hey_{lowered}"
-        return candidate
+        return candidate.lower().replace(" ", "_")
 
     def __init__(self) -> None:
         self.sample_rate = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
@@ -49,7 +46,7 @@ class VoicePipeline:
         self.post_wake_record_min_seconds = float(os.getenv("POST_WAKE_MIN_RECORD_SECONDS", "0.45"))
         self.post_wake_silence_seconds = float(os.getenv("POST_WAKE_SILENCE_SECONDS", "0.35"))
         self.post_wake_silence_rms_threshold = float(os.getenv("POST_WAKE_SILENCE_RMS_THRESHOLD", "550"))
-        wakeword_models_env = os.getenv("WAKEWORD_MODELS", os.getenv("WAKEWORD_MODEL", "hey_nova"))
+        wakeword_models_env = os.getenv("WAKEWORD_MODELS", os.getenv("WAKEWORD_MODEL", "nova"))
         self.wake_model_names = [self._normalize_wake_model_name(w) for w in wakeword_models_env.split(",") if w.strip()]
         if not self.wake_model_names:
             self.wake_model_names = [self._normalize_wake_model_name("nova")]
