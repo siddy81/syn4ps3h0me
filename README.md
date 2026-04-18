@@ -180,6 +180,7 @@ VOICE_WAKEWORD_MODEL=nova
 VOICE_WAKEWORD_MODELS=nova,jarvis
 VOICE_WAKEWORD_MODEL_PATH=
 VOICE_WAKEWORD_MODEL_PATHS=
+VOICE_WAKEWORD_NOVA_MODEL_SOURCE=
 VOICE_WAKE_WORD_THRESHOLD=0.5
 VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0
 VOICE_POST_WAKE_RECORD_SECONDS=6
@@ -190,8 +191,8 @@ VOICE_POST_WAKE_SILENCE_RMS_THRESHOLD=550
 # Hinweis:
 # Alle Modelle in VOICE_WAKEWORD_MODELS müssen verfügbar sein.
 # Falls ein Modellname (z.B. nova) nicht als Pretrained-Modell vorhanden ist,
-# legt die passende Datei unter /app/app/models/wakewords/<name>.tflite ab
-# (im Repo z.B. voice-pipeline/app/models/wakewords/nova.tflite) oder setzt VOICE_WAKEWORD_MODEL_PATHS explizit.
+# legt install.sh das Modell über VOICE_WAKEWORD_NOVA_MODEL_SOURCE nach
+# voice-pipeline/app/models/wakewords/nova.tflite ab (URL oder lokaler Dateipfad).
 
 # Audio/Devices
 VOICE_AUDIO_SAMPLE_RATE=16000

@@ -827,6 +827,7 @@ ensure_voice_env_defaults() {
     "VOICE_WAKEWORD_MODELS=nova,jarvis"
     "VOICE_WAKEWORD_MODEL_PATH="
     "VOICE_WAKEWORD_MODEL_PATHS="
+    "VOICE_WAKEWORD_NOVA_MODEL_SOURCE="
     "VOICE_WAKE_WORD_THRESHOLD=0.5"
     "VOICE_WAKE_EVENT_COOLDOWN_SECONDS=2.0"
     "VOICE_POST_WAKE_RECORD_SECONDS=6"
@@ -880,6 +881,48 @@ ensure_voice_env_defaults() {
   upsert_env_key "OPEN_WEBUI_OLLAMA_BASE_URL" "http://127.0.0.1:8000" "${ENV_FILE}"
   upsert_env_key "OPEN_WEBUI_IMAGE" "ghcr.io/open-webui/open-webui:main" "${ENV_FILE}"
   log "Setze OPEN_WEBUI_DEFAULT_MODELS auf ${ACTIVE_LLM_MODEL}"
+}
+
+ensure_wakeword_model_artifacts() {
+  cd "${PROJECT_DIR}"
+  local configured_models
+  configured_models="$(read_env_key "VOICE_WAKEWORD_MODELS" "${ENV_FILE}")"
+  if [[ -z "${configured_models}" ]]; then
+    configured_models="$(read_env_key "VOICE_WAKEWORD_MODEL" "${ENV_FILE}")"
+  fi
+
+  if [[ "${configured_models}" != *"nova"* ]]; then
+    return
+  fi
+
+  local target_path="${PROJECT_DIR}/voice-pipeline/app/models/wakewords/nova.tflite"
+  mkdir -p "$(dirname "${target_path}")"
+  if [[ -f "${target_path}" ]]; then
+    log "Wakeword-Modell vorhanden: ${target_path}"
+    return
+  fi
+
+  local source_value
+  source_value="$(read_env_key "VOICE_WAKEWORD_NOVA_MODEL_SOURCE" "${ENV_FILE}")"
+  if [[ -z "${source_value}" ]]; then
+    fail "Wakeword 'nova' ist konfiguriert, aber ${target_path} fehlt. Setze VOICE_WAKEWORD_NOVA_MODEL_SOURCE (Dateipfad oder URL) und führe install.sh erneut aus."
+  fi
+
+  if [[ "${source_value}" =~ ^https?:// ]]; then
+    log "Lade Wakeword-Modell nova von URL ..."
+    curl --fail --silent --show-error --location "${source_value}" --output "${target_path}"
+  else
+    if [[ ! -f "${source_value}" ]]; then
+      fail "VOICE_WAKEWORD_NOVA_MODEL_SOURCE zeigt nicht auf eine existierende Datei: ${source_value}"
+    fi
+    log "Kopiere Wakeword-Modell nova aus lokaler Datei ..."
+    cp "${source_value}" "${target_path}"
+  fi
+
+  if [[ ! -s "${target_path}" ]]; then
+    fail "Wakeword-Modell konnte nicht bereitgestellt werden: ${target_path}"
+  fi
+  log "Wakeword-Modell bereitgestellt: ${target_path}"
 }
 
 
@@ -1095,6 +1138,7 @@ main() {
   fi
 
   if [[ "${MODULE_VOICE}" == "true" ]]; then
+    ensure_wakeword_model_artifacts
     voice_pipeline_preflight
     build_voice_service_image
     ensure_whisper_model_cache
