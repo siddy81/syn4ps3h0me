@@ -690,3 +690,16 @@ Details zu Änderungen und Ports stehen in `CHANGELOG.md`.
 Damit die Kosten im Dashboard korrekt dargestellt werden, 
 müsst ihr in der Datei `shelly-overview.json` im Bereich 
 **Gesamtkosten** den Standardwert `0.3577` durch euren eigenen Strompreis ersetzen.
+
+## Backup & Restore (automatisiert)
+
+- `./backup.sh`: erstellt ein vollständiges Backup (Influx logical + Volumes).
+- `./install-backup-cron.sh`: richtet einen täglichen Cronjob um **03:00 Uhr** ein.
+- `./restore.sh <backup-ordner|latest>`: stellt ein Backup manuell wieder her (mit Sicherheitsabfrage).
+
+Beispiel:
+```bash
+./install-backup-cron.sh
+./backup.sh
+./restore.sh latest
+```
