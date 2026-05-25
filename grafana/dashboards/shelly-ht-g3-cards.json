@@ -737,7 +737,9 @@
         }
       ],
       "title": "🌍 Langzeit: Jahresmittel & Trend (alle H&T)",
-      "type": "timeseries"
+      "type": "timeseries",
+      "timeFrom": "now-10y",
+      "hideTimeOverride": false
     }
   ],
   "preload": false,
