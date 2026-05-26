@@ -289,21 +289,21 @@ Nur so werden die Daten in den vorhandenen Telegraf/Influx/Grafana-Flows korrekt
 Die statischen DNS-Einträge liegen in `docker/pihole/custom.list`.
 
 ### Vorschlag: Dynamischer DNS-Suffix für FQDN-Defaults
-Damit Konfigurationseinträge standardmäßig FQDNs nutzen (z. B. `mosquitto.zuhause.lan`), kann der Installer beim Setup den DNS-Suffix einmalig abfragen und in `.env` persistieren:
+Damit Konfigurationseinträge standardmäßig FQDNs nutzen (z. B. `mosquitto.home.lan`), kann der Installer beim Setup den DNS-Suffix einmalig abfragen und in `.env` persistieren:
 
-- Neuer `.env`-Key: `DNS_SUFFIX` (Default: `zuhause.lan`)
+- Neuer `.env`-Key: `DNS_SUFFIX` (Default: `home.lan`)
 - Abgeleiteter `.env`-Key: `MQTT_BROKER_FQDN=mosquitto.${DNS_SUFFIX}`
 - Ziel: Clients (Shelly, Home Assistant, externe Skripte) nutzen FQDN statt IP oder reinem Container-Alias.
 
 Beispielwerte:
 
 ```env
-DNS_SUFFIX=zuhause.lan
-MQTT_BROKER_FQDN=mosquitto.zuhause.lan
+DNS_SUFFIX=home.lan
+MQTT_BROKER_FQDN=mosquitto.home.lan
 ```
 
 Praktische Verwendung:
-- Bei Shelly unter MQTT-Server `mosquitto.zuhause.lan` eintragen.
+- Bei Shelly unter MQTT-Server `mosquitto.home.lan` eintragen.
 - In weiteren Clients immer den FQDN aus `MQTT_BROKER_FQDN` verwenden.
 - Auf dem Docker-Host können interne Container weiterhin `mosquitto` verwenden; für externe Geräte im LAN ist FQDN robuster.
 

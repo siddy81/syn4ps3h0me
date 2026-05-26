@@ -180,7 +180,7 @@ ensure_non_secret_env_defaults() {
     "GF_ADMIN_USER=admin"
     "OPEN_WEBUI_ADMIN_EMAIL=admin@local"
     "OPEN_WEBUI_ADMIN_NAME=admin"
-    "DNS_SUFFIX=zuhause.lan"
+    "DNS_SUFFIX=home.lan"
   )
   local entry key
   for entry in "${defaults[@]}"; do
@@ -513,7 +513,7 @@ configure_service_fqdn_defaults() {
 
   dns_suffix="$(read_env_key "DNS_SUFFIX" "${ENV_FILE}")"
   if [[ -z "${dns_suffix}" ]]; then
-    dns_suffix="zuhause.lan"
+    dns_suffix="home.lan"
   fi
 
   read -r -p "DNS-Suffix für Service-FQDNs [${dns_suffix}]: " answer
