@@ -523,9 +523,18 @@ configure_service_fqdn_defaults() {
   fi
 
   upsert_env_key "DNS_SUFFIX" "${dns_suffix}" "${ENV_FILE}"
+  upsert_env_key "INTRANET_DOMAIN" "${dns_suffix}" "${ENV_FILE}"
 
   mqtt_fqdn="mosquitto.${dns_suffix}"
   upsert_env_key "MQTT_BROKER_FQDN" "${mqtt_fqdn}" "${ENV_FILE}"
+  upsert_env_key "GRAFANA_DOMAIN" "grafana.${dns_suffix}" "${ENV_FILE}"
+  upsert_env_key "PIHOLE_DOMAIN" "pihole.${dns_suffix}" "${ENV_FILE}"
+  upsert_env_key "LEGACY_HOST_DOMAIN" "nightmaresiddious.${dns_suffix}" "${ENV_FILE}"
+  upsert_env_key "CADDY_DOMAIN" "caddy.${dns_suffix}" "${ENV_FILE}"
+  upsert_env_key "LLM_DOMAIN" "llm.${dns_suffix}" "${ENV_FILE}"
+  upsert_env_key "OPEN_WEBUI_DOMAIN" "open-webui.${dns_suffix}" "${ENV_FILE}"
+
+  log "Setze DNS_SUFFIX/INTRANET_DOMAIN auf ${dns_suffix}"
   log "Setze MQTT_BROKER_FQDN auf ${mqtt_fqdn}"
 }
 
