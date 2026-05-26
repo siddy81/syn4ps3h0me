@@ -598,9 +598,21 @@ else:
 scan_network_and_assign_fqdns() {
   local dns_suffix="$1"
   local scan_cidr=""
-  local default_cidr="${RPI_IP%.*}.0/24"
+  local default_cidr="192.168.1.0/24"
+  local detected_ipv4=""
   local prompt_template=""
   local custom_list_file="${PROJECT_DIR}/pihole/etc-pihole/custom.list"
+
+  if [[ -n "${RPI_IP:-}" ]]; then
+    default_cidr="${RPI_IP%.*}.0/24"
+  else
+    detected_ipv4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++){if($i=="src"){print $(i+1); exit}}}')"
+    if [[ "${detected_ipv4}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+      default_cidr="${detected_ipv4%.*}.0/24"
+    else
+      warn "RPI_IP ist nicht gesetzt und automatische CIDR-Erkennung war nicht möglich. Nutze Fallback ${default_cidr}."
+    fi
+  fi
 
   scan_cidr="$(read_env_key "NETWORK_SCAN_CIDR" "${ENV_FILE}")"
   [[ -n "${scan_cidr}" ]] || scan_cidr="${default_cidr}"
