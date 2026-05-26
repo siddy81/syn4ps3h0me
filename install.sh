@@ -909,14 +909,14 @@ compose_up() {
   fi
 
   if ${SUDO} docker compose version >/dev/null 2>&1; then
-    log "Starte ausgewählte Compose-Services mit docker compose up -d ..."
-    ${SUDO} docker compose up -d --force-recreate "${COMPOSE_SERVICES[@]}"
+    log "Starte ausgewählte Compose-Services mit docker compose up -d --pull always ..."
+    ${SUDO} docker compose up -d --pull always --force-recreate "${COMPOSE_SERVICES[@]}"
     return
   fi
 
   if command -v docker-compose >/dev/null 2>&1; then
-    log "Starte ausgewählte Compose-Services mit docker-compose up -d ..."
-    ${SUDO} docker-compose up -d --force-recreate "${COMPOSE_SERVICES[@]}"
+    log "Starte ausgewählte Compose-Services mit docker-compose up -d --pull always ..."
+    ${SUDO} docker-compose up -d --pull always --force-recreate "${COMPOSE_SERVICES[@]}"
     return
   fi
 
@@ -935,10 +935,10 @@ ensure_open_webui_runtime() {
 
   if ${SUDO} docker compose version >/dev/null 2>&1; then
     log "Recreate open-webui mit Compose ..."
-    ${SUDO} docker compose up -d --force-recreate open-webui || warn "Compose-Recreate für open-webui fehlgeschlagen."
+    ${SUDO} docker compose up -d --pull always --force-recreate open-webui || warn "Compose-Recreate für open-webui fehlgeschlagen."
   elif command -v docker-compose >/dev/null 2>&1; then
     log "Recreate open-webui mit docker-compose ..."
-    ${SUDO} docker-compose up -d --force-recreate open-webui || warn "docker-compose Recreate für open-webui fehlgeschlagen."
+    ${SUDO} docker-compose up -d --pull always --force-recreate open-webui || warn "docker-compose Recreate für open-webui fehlgeschlagen."
   fi
 }
 
