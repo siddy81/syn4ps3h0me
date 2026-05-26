@@ -180,6 +180,7 @@ ensure_non_secret_env_defaults() {
     "GF_ADMIN_USER=admin"
     "OPEN_WEBUI_ADMIN_EMAIL=admin@local"
     "OPEN_WEBUI_ADMIN_NAME=admin"
+    "DNS_SUFFIX=zuhause.lan"
   )
   local entry key
   for entry in "${defaults[@]}"; do
@@ -504,10 +505,35 @@ use_existing_env_secrets() {
   resolve_missing_env_secrets "${missing[@]}"
 }
 
+
+configure_service_fqdn_defaults() {
+  local dns_suffix=""
+  local mqtt_fqdn=""
+  local answer=""
+
+  dns_suffix="$(read_env_key "DNS_SUFFIX" "${ENV_FILE}")"
+  if [[ -z "${dns_suffix}" ]]; then
+    dns_suffix="zuhause.lan"
+  fi
+
+  read -r -p "DNS-Suffix für Service-FQDNs [${dns_suffix}]: " answer
+  answer="${answer// /}"
+  if [[ -n "${answer}" ]]; then
+    dns_suffix="${answer}"
+  fi
+
+  upsert_env_key "DNS_SUFFIX" "${dns_suffix}" "${ENV_FILE}"
+
+  mqtt_fqdn="mosquitto.${dns_suffix}"
+  upsert_env_key "MQTT_BROKER_FQDN" "${mqtt_fqdn}" "${ENV_FILE}"
+  log "Setze MQTT_BROKER_FQDN auf ${mqtt_fqdn}"
+}
+
 process_password_strategy() {
   ensure_env_file_present
   collect_required_secrets_for_selected_modules
   ensure_non_secret_env_defaults
+  configure_service_fqdn_defaults
   select_password_mode
 
   case "${PASSWORD_MODE}" in
