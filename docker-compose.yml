@@ -146,12 +146,12 @@ services:
       FTLCONF_dhcp_router: ${PIHOLE_DHCP_ROUTER}
       FTLCONF_dhcp_leaseTime: ${PIHOLE_DHCP_LEASETIME:-24h}
       FTLCONF_dns_hosts: |-
-        192.168.1.1 fritzbox.arkham.asylum
-        192.168.1.3 darksiddious.arkham.asylum
-        192.168.1.4 padawan.arkham.asylum
-        192.168.1.5 batman.arkham.asylum
-        192.168.1.101 nightmaresiddious.arkham.asylum
-        192.168.1.85 wohnzimmerlampe.arkham.asylum
+        192.168.1.1 fritzbox.${INTRANET_DOMAIN}
+        192.168.1.3 darksiddious.${INTRANET_DOMAIN}
+        192.168.1.4 padawan.${INTRANET_DOMAIN}
+        192.168.1.5 batman.${INTRANET_DOMAIN}
+        ${RPI_IP} nightmaresiddious.${INTRANET_DOMAIN}
+        192.168.1.85 wohnzimmerlampe.${INTRANET_DOMAIN}
         ${RPI_IP} grafana.${INTRANET_DOMAIN}
         ${RPI_IP} pihole.${INTRANET_DOMAIN}
         ${RPI_IP} mosquitto.${INTRANET_DOMAIN}
