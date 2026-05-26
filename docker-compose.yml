@@ -152,6 +152,12 @@ services:
         192.168.1.5 batman.arkham.asylum
         192.168.1.101 nightmaresiddious.arkham.asylum
         192.168.1.85 wohnzimmerlampe.arkham.asylum
+        ${RPI_IP} grafana.${INTRANET_DOMAIN}
+        ${RPI_IP} pihole.${INTRANET_DOMAIN}
+        ${RPI_IP} mosquitto.${INTRANET_DOMAIN}
+        ${RPI_IP} caddy.${INTRANET_DOMAIN}
+        ${RPI_IP} llm.${INTRANET_DOMAIN}
+        ${RPI_IP} open-webui.${INTRANET_DOMAIN}
 
     volumes:
       - ./pihole/etc-pihole:/etc/pihole
@@ -177,9 +183,9 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      GRAFANA_DOMAIN: ${PIHOLE_DOMAIN}
-      PIHOLE_DOMAIN: ${PIHOLE_DOMAIN}
-      LEGACY_HOST_DOMAIN: ${PIHOLE_DOMAIN}
+      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN:-grafana.${INTRANET_DOMAIN}}
+      PIHOLE_DOMAIN: ${PIHOLE_DOMAIN:-pihole.${INTRANET_DOMAIN}}
+      LEGACY_HOST_DOMAIN: ${LEGACY_HOST_DOMAIN:-nightmaresiddious.${INTRANET_DOMAIN}}
       LEGACY_HOST_IP: ${LEGACY_HOST_IP}
     command: ["caddy", "run", "--config", "/etc/caddy/config.json"]
     volumes:
