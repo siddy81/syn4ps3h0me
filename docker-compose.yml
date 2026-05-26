@@ -182,10 +182,15 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       GRAFANA_DOMAIN: ${GRAFANA_DOMAIN:-grafana.${INTRANET_DOMAIN}}
       PIHOLE_DOMAIN: ${PIHOLE_DOMAIN:-pihole.${INTRANET_DOMAIN}}
       LEGACY_HOST_DOMAIN: ${LEGACY_HOST_DOMAIN:-nightmaresiddious.${INTRANET_DOMAIN}}
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-caddy.${INTRANET_DOMAIN}}
+      LLM_DOMAIN: ${LLM_DOMAIN:-llm.${INTRANET_DOMAIN}}
+      OPEN_WEBUI_DOMAIN: ${OPEN_WEBUI_DOMAIN:-open-webui.${INTRANET_DOMAIN}}
       LEGACY_HOST_IP: ${LEGACY_HOST_IP}
     command: ["caddy", "run", "--config", "/etc/caddy/config.json"]
     volumes:

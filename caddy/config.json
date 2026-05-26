@@ -241,6 +241,100 @@
                 }
               ],
               "terminal": true
+            },
+            {
+              "match": [
+                {
+                  "host": [
+                    "{env.LLM_DOMAIN}"
+                  ]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode"
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "upstreams": [
+                            {
+                              "dial": "host.docker.internal:8000"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "match": [
+                {
+                  "host": [
+                    "{env.OPEN_WEBUI_DOMAIN}"
+                  ]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {},
+                            "zstd": {}
+                          },
+                          "handler": "encode"
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "upstreams": [
+                            {
+                              "dial": "host.docker.internal:8080"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "match": [
+                {
+                  "host": [
+                    "{env.CADDY_DOMAIN}"
+                  ]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "static_response",
+                  "status_code": 200,
+                  "headers": {
+                    "Content-Type": [
+                      "text/plain; charset=utf-8"
+                    ]
+                  },
+                  "body": "Caddy reverse proxy is running."
+                }
+              ],
+              "terminal": true
             }
           ]
         }
