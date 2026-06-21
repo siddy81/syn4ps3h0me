@@ -573,6 +573,90 @@ install_docker_if_needed() {
   command -v docker >/dev/null 2>&1 || fail "Docker wurde nicht korrekt installiert."
 }
 
+configure_docker_log_rotation() {
+  log "Konfiguriere Docker Logrotation in /etc/docker/daemon.json ..."
+
+  local result=""
+  result="$(${SUDO} python3 - <<'PY'
+import json
+import os
+import shutil
+import tempfile
+
+path = "/etc/docker/daemon.json"
+desired = {
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "10m",
+        "max-file": "3",
+    },
+}
+
+os.makedirs(os.path.dirname(path), exist_ok=True)
+
+if os.path.exists(path):
+    with open(path, "r", encoding="utf-8") as handle:
+        content = handle.read().strip()
+    current = json.loads(content) if content else {}
+else:
+    current = {}
+
+if not isinstance(current, dict):
+    raise SystemExit(f"{path} muss ein JSON-Objekt enthalten.")
+
+updated = dict(current)
+updated["log-driver"] = desired["log-driver"]
+updated["log-opts"] = desired["log-opts"]
+
+if updated == current:
+    print("unchanged")
+    raise SystemExit(0)
+
+fd, tmp_path = tempfile.mkstemp(
+    prefix="daemon.json.",
+    suffix=".tmp",
+    dir=os.path.dirname(path),
+    text=True,
+)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(updated, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+    with open(tmp_path, "r", encoding="utf-8") as handle:
+        json.load(handle)
+
+    if os.path.exists(path):
+        shutil.copymode(path, tmp_path)
+    else:
+        os.chmod(tmp_path, 0o644)
+
+    os.replace(tmp_path, path)
+except Exception:
+    try:
+        os.unlink(tmp_path)
+    except FileNotFoundError:
+        pass
+    raise
+
+print("changed")
+PY
+  )"
+
+  case "${result}" in
+    changed)
+      log "Docker Logrotation aktualisiert. Starte Docker neu ..."
+      ${SUDO} systemctl restart docker
+      ;;
+    unchanged)
+      log "Docker Logrotation ist bereits aktuell."
+      ;;
+    *)
+      fail "Unerwartetes Ergebnis bei Docker Logrotation: ${result}"
+      ;;
+  esac
+}
+
 ensure_docker_group_membership() {
   if id -nG "${REAL_USER}" | grep -qw docker; then
     log "Benutzer ${REAL_USER} ist bereits in der docker-Gruppe."
@@ -1048,6 +1132,7 @@ main() {
   process_password_strategy
   install_base_packages
   install_docker_if_needed
+  configure_docker_log_rotation
   ensure_docker_group_membership
   ensure_hailo_runtime_for_selected_modules
 
