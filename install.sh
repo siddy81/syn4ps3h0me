@@ -134,10 +134,7 @@ get_secret_description() {
   local key="$1"
 
   case "${key}" in
-    MQTT_PASSWORD) echo "Mosquitto/Telegraf MQTT Passwort" ;;
-    INFLUXDB_PASSWORD) echo "InfluxDB Admin-Passwort" ;;
-    INFLUXDB_WRITE_TOKEN) echo "InfluxDB Write-Token (Telegraf/Grafana Datasource)" ;;
-    GRAFANA_ADMIN_PASSWORD) echo "Grafana Admin-Passwort" ;;
+    MQTT_PASSWORD) echo "Mosquitto MQTT Passwort" ;;
     PIHOLE_API_PASSWORD) echo "Pi-hole API-Passwort" ;;
     PIHOLE_ADMIN_PASSWORD) echo "Pi-hole Web-Admin-Passwort" ;;
     OPEN_WEBUI_ADMIN_PASSWORD) echo "Open WebUI Admin-Passwort" ;;
@@ -150,9 +147,6 @@ collect_required_secrets_for_selected_modules() {
 
   if [[ "${MODULE_SMARTHOME}" == "true" ]]; then
     append_unique "MQTT_PASSWORD"
-    append_unique "INFLUXDB_PASSWORD"
-    append_unique "INFLUXDB_WRITE_TOKEN"
-    append_unique "GRAFANA_ADMIN_PASSWORD"
   fi
 
   if [[ "${MODULE_PIHOLE}" == "true" ]]; then
@@ -172,12 +166,7 @@ ensure_env_file_present() {
 
 ensure_non_secret_env_defaults() {
   local defaults=(
-    "MQTT_USER=telegraf"
-    "INFLUXDB_INIT_MODE=setup"
-    "INFLUXDB_USERNAME=admin"
-    "INFLUXDB_ORG=home"
-    "INFLUXDB_BUCKET=shelly"
-    "GF_ADMIN_USER=admin"
+    "MQTT_USER=smarthome"
     "OPEN_WEBUI_ADMIN_EMAIL=admin@local"
     "OPEN_WEBUI_ADMIN_NAME=admin"
     "DNS_SUFFIX=home.lan"
@@ -349,19 +338,18 @@ select_modules() {
   fi
 
   if [[ "${install_all}" == "true" ]]; then
-    MODULE_SMARTHOME=true
+    MODULE_SMARTHOME=false
     MODULE_PIHOLE=true
     MODULE_CADDY=true
     MODULE_VOICE=true
     MODULE_LLM_CHAT=true
-    COMPOSE_SERVICES+=(mosquitto influxdb telegraf grafana pihole caddy voice-pipeline open-webui)
+    COMPOSE_SERVICES+=(pihole caddy voice-pipeline open-webui)
     log "Option 'Alles installieren' gewählt."
   else
 
-    if ask_module "1) Smart Home Shelly Überwachung (mosquitto, influxdb, telegraf, grafana)"; then
-      MODULE_SMARTHOME=true
-      COMPOSE_SERVICES+=(mosquitto influxdb telegraf grafana)
-    fi
+    echo "1) Smart Home MQTT-Broker (mosquitto) ist in docker-compose.yml als auskommentierte Vorlage enthalten und wird standardmäßig nicht gestartet."
+    echo "   Zum Aktivieren den Mosquitto-Block und die mosquitto_* Volumes in docker-compose.yml einkommentieren."
+    echo
 
     if ask_module "2) Pi-hole"; then
       MODULE_PIHOLE=true
@@ -527,7 +515,6 @@ configure_service_fqdn_defaults() {
 
   mqtt_fqdn="mosquitto.${dns_suffix}"
   upsert_env_key "MQTT_BROKER_FQDN" "${mqtt_fqdn}" "${ENV_FILE}"
-  upsert_env_key "GRAFANA_DOMAIN" "grafana.${dns_suffix}" "${ENV_FILE}"
   upsert_env_key "PIHOLE_DOMAIN" "pihole.${dns_suffix}" "${ENV_FILE}"
   upsert_env_key "LEGACY_HOST_DOMAIN" "nightmaresiddious.${dns_suffix}" "${ENV_FILE}"
   upsert_env_key "CADDY_DOMAIN" "caddy.${dns_suffix}" "${ENV_FILE}"

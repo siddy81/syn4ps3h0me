@@ -23,13 +23,12 @@ Wichtig:
 2) PROJEKT-KURZÜBERBLICK
 ==================================================
 syn4ps3h0me ist ein lokales Smart-Home- und Homelab-Setup (Raspberry Pi Fokus), das eine komplette Basisplattform für
-Monitoring, Messaging, DNS/Adblocking, Reverse Proxy, lokale KI und Voice-Automation bereitstellt.
+Messaging, DNS/Adblocking, Reverse Proxy, lokale KI und Voice-Automation bereitstellt.
 
 Zentrale Eigenschaften:
 - Einfache Installation über install.sh
 - Docker-Compose als Betriebsgrundlage für Kernservices
-- Monitoring-Stack (Telegraf + InfluxDB + Grafana)
-- MQTT-Broker (Mosquitto)
+- MQTT-Broker-Vorlage (Mosquitto, in docker-compose.yml auskommentiert und inaktiv)
 - DNS/Adblocking (Pi-hole)
 - HTTPS-Zugriff/Reverse Proxy (Caddy)
 - Open WebUI für lokale KI-Interaktion inkl. RAG
@@ -39,10 +38,7 @@ Zentrale Eigenschaften:
 3) SYSTEMARCHITEKTUR (LOGISCHE SICHT)
 ==================================================
 3.1 Infrastruktur-/Core-Services
-- Mosquitto: MQTT Nachrichtenbus
-- InfluxDB: Zeitreihenspeicher
-- Telegraf: Datensammlung und Ingestion in InfluxDB
-- Grafana: Dashboards/Visualisierung
+- Mosquitto: vorbereitete MQTT-Nachrichtenbus-Vorlage, standardmäßig auskommentiert/inaktiv
 - Pi-hole: DNS + Werbeblocker + optional DHCP
 - Caddy: Reverse Proxy + TLS Terminierung
 
@@ -57,7 +53,7 @@ Zentrale Eigenschaften:
 
 3.3 Persistenz & Konfiguration
 - Docker volumes für persistente Servicedaten
-- Servicekonfigurationen in jeweiligen Unterordnern (z. B. telegraf/, grafana/, pihole/, caddy/, voice-pipeline/)
+- Servicekonfigurationen in jeweiligen Unterordnern (z. B. mosquitto/, pihole/, caddy/, voice-pipeline/)
 - Secrets/Passwörter über .env
 
 ==================================================
@@ -116,8 +112,8 @@ Zentrale Eigenschaften:
 ==================================================
 6) DATENFLÜSSE (PRAKTISCHE SICHT)
 ==================================================
-6.1 Monitoring-Datenfluss
-Sensor/Host/MQTT -> Telegraf -> InfluxDB -> Grafana Dashboards
+6.1 MQTT-Datenfluss
+Sensor/Host/Client -> aktivierter Mosquitto-Broker -> alternative Systeme wie Home Assistant, Node-RED, ioBroker, externe Telegraf-Instanzen oder eigene Skripte
 
 6.2 DNS/Web-Zugriff
 Clients -> Pi-hole (DNS, Filtering) -> interne Namensauflösung
@@ -142,22 +138,19 @@ Wissensdatei (open-webui/knowledge) -> Import in Workspace/Knowledge -> Embeddin
 - Betriebs-/Installationsdokumentation
 - Enthält Bedienhinweise für Open WebUI Knowledge Import
 
-7.3 telegraf/telegraf.conf
-- Input/Output Pipeline für Metriken
+7.3 mosquitto/config/mosquitto.conf
+- Broker-Konfiguration für MQTT auf Port 1883 mit Passwortdatei; Compose-Service ist standardmäßig auskommentiert
 
-7.4 grafana/provisioning + grafana/dashboards
-- Datasource Provisioning und vordefinierte Dashboards
-
-7.5 pihole/*
+7.4 pihole/*
 - Adlists, DNSMasq-Erweiterungen, Webserver-Config
 
-7.6 caddy/config.json
+7.5 caddy/config.json
 - Reverse Proxy Routen/Upstreams
 
-7.7 voice-pipeline/app/*
+7.6 voice-pipeline/app/*
 - Hauptlogik für Spracheingabe, Routing, Integrationen, Konfiguration
 
-7.8 shelly_script/*
+7.7 shelly_script/*
 - Skripte für Shelly Geräteintegration
 
 ==================================================
@@ -185,27 +178,18 @@ Wissensdatei (open-webui/knowledge) -> Import in Workspace/Knowledge -> Embeddin
 - app/config/shelly_devices.json: Aktives Mapping (lokal anpassen)
 - tests/*: Unit-/Funktionstests der Voice-Komponenten
 
-8.3 grafana/
-- provisioning/datasources/influxdb.yml: Influx datasource
-- provisioning/dashboards/*: Dashboard-Provisioning
-- dashboards/*.json: Dashboarddefinitionen
-
-8.4 influxdb/
-- config/influxdb.conf: InfluxDB Konfiguration
-- config/init-influxdb.iql: Initialisierung
-
-8.5 mosquitto/
+8.3 mosquitto/
 - config/mosquitto.conf: Broker-Konfiguration
 
-8.6 pihole/
+8.4 pihole/
 - etc-dnsmasq.d/*.conf: DNSMasq Zusatzkonfig
 - adlists.list: Blocklisten
 - lighttpd-external.conf: Pi-hole Webserver-Anpassung
 
-8.7 caddy/
+8.5 caddy/
 - config.json: Reverse Proxy Setup
 
-8.8 open-webui/
+8.6 open-webui/
 - knowledge/README.md: Hinweis zur Nutzung als Importquelle
 - knowledge/*.txt|*.md|...: Dokumente für RAG-Ingestion
 
