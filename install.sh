@@ -538,11 +538,146 @@ configure_service_fqdn_defaults() {
   log "Setze MQTT_BROKER_FQDN auf ${mqtt_fqdn}"
 }
 
+
+
+is_valid_hostname_label() {
+  local value="${1,,}"
+  [[ "${value}" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]
+}
+
+build_reserved_hostname_list() {
+  local -a reserved=(
+    "grafana" "batman" "darksiddious" "fritzbox" "nightmaresiddious"
+    "open-webui" "llm" "caddy" "pihole" "padawan" "mosquitto" "voice"
+  )
+  local custom_list_file="${PROJECT_DIR}/pihole/etc-pihole/custom.list"
+  local host
+
+  if [[ -f "${custom_list_file}" ]]; then
+    while read -r host; do
+      [[ -n "${host}" ]] && reserved+=("${host%%.*}")
+    done < <(awk '!/^[[:space:]]*#/ && NF>=2 {print $2}' "${custom_list_file}")
+  fi
+
+  printf '%s\n' "${reserved[@]}" | awk 'NF {print tolower($0)}' | sort -u
+}
+
+request_hostname_from_llm() {
+  local ip="$1"
+  local dns_suffix="$2"
+  local reserved_csv="$3"
+  local prompt_template="$4"
+  local prompt=""
+  local payload=""
+  local reply=""
+  local candidate=""
+
+  prompt="${prompt_template}\nAntwortformat: NUR JSON wie {\"hostname\":\"beispielname\"}. Keine weiteren Felder.\nIP: ${ip}\nDomain: ${dns_suffix}\nBereits vergebene Namen: ${reserved_csv}"
+  payload="$(printf '{"message":%s}' "$(printf '%s' "${prompt}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")"
+
+  reply="$(curl -fsS -X POST "http://localhost:8000/api/chat" -H "Content-Type: application/json" -d "${payload}" || true)"
+  candidate="$(printf '%s' "${reply}" | python3 -c 'import json,sys,re
+raw=sys.stdin.read().strip()
+if not raw:
+    print("")
+    raise SystemExit(0)
+try:
+    data=json.loads(raw)
+    text=data.get("response") or data.get("message") or raw
+except Exception:
+    text=raw
+m=re.search(r'\{\s*"hostname"\s*:\s*"([a-zA-Z0-9-]+)"\s*\}', text)
+if m:
+    print(m.group(1).lower())
+else:
+    print("")')"
+
+  printf '%s' "${candidate}"
+}
+
+scan_network_and_assign_fqdns() {
+  local dns_suffix="$1"
+  local scan_cidr=""
+  local default_cidr="192.168.1.0/24"
+  local detected_ipv4=""
+  local prompt_template=""
+  local custom_list_file="${PROJECT_DIR}/pihole/etc-pihole/custom.list"
+
+  if [[ -n "${RPI_IP:-}" ]]; then
+    default_cidr="${RPI_IP%.*}.0/24"
+  else
+    detected_ipv4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++){if($i=="src"){print $(i+1); exit}}}')"
+    if [[ "${detected_ipv4}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+      default_cidr="${detected_ipv4%.*}.0/24"
+    else
+      warn "RPI_IP ist nicht gesetzt und automatische CIDR-Erkennung war nicht möglich. Nutze Fallback ${default_cidr}."
+    fi
+  fi
+
+  scan_cidr="$(read_env_key "NETWORK_SCAN_CIDR" "${ENV_FILE}")"
+  [[ -n "${scan_cidr}" ]] || scan_cidr="${default_cidr}"
+
+  read -r -p "CIDR für Netzwerkscan [${scan_cidr}]: " answer
+  answer="${answer// /}"
+  [[ -n "${answer}" ]] && scan_cidr="${answer}"
+
+  upsert_env_key "NETWORK_SCAN_CIDR" "${scan_cidr}" "${ENV_FILE}"
+
+  prompt_template="$(read_env_key "FQDN_NAME_PROMPT" "${ENV_FILE}")"
+  if [[ -z "${prompt_template}" ]]; then
+    prompt_template='gib mir ausschließlich einen guten FQDN-Namen für meine Geräte - nimm Filmnamen aus Der Herr Der Ringe oder Batman'
+    upsert_env_key "FQDN_NAME_PROMPT" "${prompt_template}" "${ENV_FILE}"
+  fi
+
+  mkdir -p "$(dirname "${custom_list_file}")"
+  touch "${custom_list_file}"
+
+  mapfile -t reserved_hosts < <(build_reserved_hostname_list)
+  local reserved_csv
+  reserved_csv="$(IFS=,; echo "${reserved_hosts[*]}")"
+
+  log "Scanne Heimnetz (${scan_cidr}) via nmap ..."
+  mapfile -t discovered_ips < <(${SUDO} nmap -sn "${scan_cidr}" 2>/dev/null | awk '/Nmap scan report/{print $NF}' | tr -d '()' | awk '/^[0-9]+\./{print}')
+
+  if [[ ${#discovered_ips[@]} -eq 0 ]]; then
+    warn "Keine Geräte im Netzwerkscan gefunden oder nmap nicht verfügbar."
+    return
+  fi
+
+  local existing_ip existing_host ip candidate tries generated_entries=""
+  for ip in "${discovered_ips[@]}"; do
+    existing_host="$(awk -v ip="${ip}" '!/^[[:space:]]*#/ && $1==ip {print $2; exit}' "${custom_list_file}")"
+    [[ -n "${existing_host}" ]] && continue
+
+    tries=0
+    candidate=""
+    while [[ ${tries} -lt 5 ]]; do
+      candidate="$(request_hostname_from_llm "${ip}" "${dns_suffix}" "${reserved_csv}" "${prompt_template}")"
+      if [[ -n "${candidate}" ]] && is_valid_hostname_label "${candidate}" && [[ ! " ${reserved_hosts[*]} " =~ " ${candidate} " ]]; then
+        break
+      fi
+      candidate=""
+      tries=$((tries+1))
+    done
+
+    if [[ -z "${candidate}" ]]; then
+      candidate="device-${ip##*.}"
+      warn "LLM lieferte keinen eindeutigen Namen für ${ip}; fallback auf ${candidate}."
+    fi
+
+    echo "${ip} ${candidate}.${dns_suffix}" >> "${custom_list_file}"
+    reserved_hosts+=("${candidate}")
+    reserved_csv="$(IFS=,; echo "${reserved_hosts[*]}")"
+    log "FQDN vergeben: ${ip} -> ${candidate}.${dns_suffix}"
+  done
+}
+
 process_password_strategy() {
   ensure_env_file_present
   collect_required_secrets_for_selected_modules
   ensure_non_secret_env_defaults
   configure_service_fqdn_defaults
+  scan_network_and_assign_fqdns "$(read_env_key "DNS_SUFFIX" "${ENV_FILE}")"
   select_password_mode
 
   case "${PASSWORD_MODE}" in
