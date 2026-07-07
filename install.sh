@@ -338,19 +338,18 @@ select_modules() {
   fi
 
   if [[ "${install_all}" == "true" ]]; then
-    MODULE_SMARTHOME=true
+    MODULE_SMARTHOME=false
     MODULE_PIHOLE=true
     MODULE_CADDY=true
     MODULE_VOICE=true
     MODULE_LLM_CHAT=true
-    COMPOSE_SERVICES+=(mosquitto pihole caddy voice-pipeline open-webui)
+    COMPOSE_SERVICES+=(pihole caddy voice-pipeline open-webui)
     log "Option 'Alles installieren' gewählt."
   else
 
-    if ask_module "1) Smart Home MQTT-Broker (mosquitto)"; then
-      MODULE_SMARTHOME=true
-      COMPOSE_SERVICES+=(mosquitto)
-    fi
+    echo "1) Smart Home MQTT-Broker (mosquitto) ist in docker-compose.yml als auskommentierte Vorlage enthalten und wird standardmäßig nicht gestartet."
+    echo "   Zum Aktivieren den Mosquitto-Block und die mosquitto_* Volumes in docker-compose.yml einkommentieren."
+    echo
 
     if ask_module "2) Pi-hole"; then
       MODULE_PIHOLE=true

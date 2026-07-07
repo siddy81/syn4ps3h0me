@@ -9,7 +9,7 @@ Die Installation, Grundkonfiguration und der Start der benötigten Services erfo
 Aktuell umfasst das Projekt die automatische Einrichtung und Vorkonfiguration der folgenden Komponenten:
 
 - **Docker**
-- **Mosquitto**
+- **Mosquitto** (als auskommentierte, inaktive Vorlage in `docker-compose.yml`)
 - **Pi-hole**
 - **Caddy**
 - **Open WebUI**
@@ -89,7 +89,6 @@ Als Amazon-Partner verdiene ich an qualifizierten Verkäufen.
 Die Installation arbeitet mit **service-spezifischen Secrets** in der `.env` (kein gemeinsames Pflicht-Passwort für alle Dienste).
 Bitte vor Produktivbetrieb setzen/ändern:
 
-- `MQTT_PASSWORD`
 - `PIHOLE_API_PASSWORD`
 - `PIHOLE_ADMIN_PASSWORD`
 - `OPEN_WEBUI_ADMIN_PASSWORD`
@@ -255,15 +254,16 @@ Ohne `VOICE_TTS_SHELL_COMMAND` nutzt die Pipeline automatisch `espeak-ng` + `pap
 Pi-hole stellt den zentralen DNS-Resolver im Heimnetz bereit. Über statische DNS-Einträge werden Geräte- und Service-Namen zuverlässig intern aufgelöst.
 
 ### Was machen die Docker-Services?
-- Mosquitto: MQTT-Broker z.B. für Shelly-Geräte, Sensoren, Home Assistant, Node-RED oder andere MQTT-fähige Systeme.
+- Mosquitto: als auskommentierte Vorlage enthaltener MQTT-Broker z.B. für Shelly-Geräte, Sensoren, Home Assistant, Node-RED oder andere MQTT-fähige Systeme. Standardmäßig ist dieser Dienst inaktiv.
 - Pi-hole: DNS-WebUI und lokaler DNS-Server.
 - Caddy: Reverse Proxy für HTTPS/TLS (lokale Zertifikate im Heimnetz).
 
 ### MQTT-Anbindung für alternative Systeme
-Mosquitto bleibt als zentraler MQTT-Broker im Stack aktiv und ist über Port `1883` erreichbar. Alternative Systeme wie Home Assistant, Node-RED, ioBroker, externe Telegraf-Instanzen oder eigene Skripte können sich direkt mit dem Broker verbinden.
+Mosquitto bleibt als vorbereitete MQTT-Broker-Vorlage im Repository erhalten, ist in `docker-compose.yml` aber standardmäßig auskommentiert und damit inaktiv. Wenn du den mitgelieferten Broker nutzen möchtest, kommentiere den Mosquitto-Service und die `mosquitto_*` Volumes in `docker-compose.yml` wieder ein und starte den Stack neu. Danach ist der Broker über Port `1883` erreichbar. Alternative Systeme wie Home Assistant, Node-RED, ioBroker, externe Telegraf-Instanzen oder eigene Skripte können sich direkt mit dem Broker verbinden.
 
-Verbindungsdaten:
+Verbindungsdaten nach Aktivierung:
 - Host/FQDN im LAN: `mosquitto.${INTRANET_DOMAIN}` bzw. der Wert aus `MQTT_BROKER_FQDN`
+- DNS: die auskommentierte `mosquitto.${INTRANET_DOMAIN}`-Zeile in `FTLCONF_dns_hosts` wieder aktivieren
 - Port: `1883`
 - Benutzer: `MQTT_USER` aus `.env`
 - Passwort: `MQTT_PASSWORD` aus `.env`
@@ -278,7 +278,7 @@ mosquitto_sub -h mosquitto.arkham.asylum -p 1883 -u "$MQTT_USER" -P "$MQTT_PASSW
 mosquitto_pub -h mosquitto.arkham.asylum -p 1883 -u "$MQTT_USER" -P "$MQTT_PASSWORD" -t "syn4ps3h0me/test" -m "hello"
 ```
 
-Für Docker-Container im gleichen Compose-Netzwerk kann als Broker-Adresse `mosquitto:1883` verwendet werden. Externe Geräte im LAN sollten den FQDN `mosquitto.${INTRANET_DOMAIN}` oder `MQTT_BROKER_FQDN` nutzen.
+Nach Aktivierung können Docker-Container im gleichen Compose-Netzwerk als Broker-Adresse `mosquitto:1883` verwenden. Externe Geräte im LAN sollten dann den FQDN `mosquitto.${INTRANET_DOMAIN}` oder `MQTT_BROKER_FQDN` nutzen.
 
 ### Warum `arkham.asylum` intern?
 - Einheitliches, merkbares Namensschema für Geräte und Services.
@@ -293,7 +293,7 @@ Für Docker-Container im gleichen Compose-Netzwerk kann als Broker-Adresse `mosq
 
 ### Service-FQDN-Mapping (zeigen auf Raspberry Pi )
 - `pihole.arkham.asylum`
-- `mosquitto.arkham.asylum`
+- `mosquitto.arkham.asylum` (standardmäßig im Compose-Template auskommentiert, erst nach Aktivierung des Mosquitto-DNS-Eintrags nutzbar)
 
 Die statischen DNS-Einträge liegen in `docker/pihole/custom.list`.
 
@@ -312,9 +312,9 @@ MQTT_BROKER_FQDN=mosquitto.home.lan
 ```
 
 Praktische Verwendung:
-- Bei Shelly unter MQTT-Server `mosquitto.home.lan` eintragen.
-- In weiteren Clients immer den FQDN aus `MQTT_BROKER_FQDN` verwenden.
-- Auf dem Docker-Host können interne Container weiterhin `mosquitto` verwenden; für externe Geräte im LAN ist FQDN robuster.
+- Nach Aktivierung bei Shelly unter MQTT-Server `mosquitto.home.lan` eintragen.
+- In weiteren Clients dann immer den FQDN aus `MQTT_BROKER_FQDN` verwenden.
+- Nach Aktivierung können Container im Compose-Netzwerk `mosquitto` verwenden; für externe Geräte im LAN ist FQDN robuster.
 
 ## 3. Setup Schritt-für-Schritt
 
@@ -368,7 +368,6 @@ cp .env .env.local  # optional backup before editing
 
 ### Secrets in `.env`
 Bitte die produktiv genutzten Secret-Variablen setzen (Beispiele):
-- `MQTT_PASSWORD=...`
 - `PIHOLE_API_PASSWORD=...`
 - `PIHOLE_ADMIN_PASSWORD=...`
 - `OPEN_WEBUI_ADMIN_PASSWORD=...`
@@ -389,7 +388,7 @@ docker compose down
 ### HTTP/HTTPS
 Erreichbar sind die Services mit der default-Einstellung über die DNS-Einträge:
 - Pi-hole: `http://nightmaresiddious.arkham.asylum:8088`
-- Mosquitto: `mosquitto.arkham.asylum:1883`
+- Mosquitto: erst nach Einkommentieren des Mosquitto-Blocks unter `mosquitto.arkham.asylum:1883`
 
 
 
@@ -528,6 +527,7 @@ docker compose config
 docker compose up -d
 
 # DNS-Auflösung über Pi-hole prüfen (expliziter DNS-Server)
+# mosquitto.arkham.asylum nur prüfen, wenn der Mosquitto-DNS-Eintrag aktiviert wurde
 nslookup mosquitto.arkham.asylum 192.168.1.101
 nslookup darksiddious.arkham.asylum 192.168.1.101
 
@@ -541,7 +541,7 @@ curl -I https://pihole.arkham.asylum/admin/
 Für die modulare Entfernung gibt es `uninstall.sh`.
 Das Script kann einzeln entfernen:
 
-- Smart Home MQTT-Broker (mosquitto)
+- Smart Home MQTT-Broker (mosquitto; inaktive Compose-Vorlage)
 - Pi-hole
 - Caddy
 - Voice Pipeline

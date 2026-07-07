@@ -9,7 +9,7 @@ Installation, baseline configuration, and startup of required services are handl
 At the moment, the project includes automated setup and pre-configuration of the following components:
 
 - **Docker**
-- **Mosquitto**
+- **Mosquitto** (as a commented, inactive template in `docker-compose.yml`)
 - **Pi-hole**
 - **Caddy**
 - **Open WebUI**
@@ -87,7 +87,6 @@ As an Amazon Associate, I earn from qualifying purchases.
 Installation uses **service-specific secrets** in `.env` (no shared mandatory password for all services).
 Set/change these before production use:
 
-- `MQTT_PASSWORD`
 - `PIHOLE_API_PASSWORD`
 - `PIHOLE_ADMIN_PASSWORD`
 - `OPEN_WEBUI_ADMIN_PASSWORD`
@@ -252,15 +251,16 @@ Without `VOICE_TTS_SHELL_COMMAND`, the pipeline automatically uses `espeak-ng` +
 Pi-hole provides the central DNS resolver in the home network. Static DNS entries ensure reliable internal resolution of device and service names.
 
 ### What do the Docker services do?
-- Mosquitto: MQTT broker, e.g. for Shelly devices, sensors, Home Assistant, Node-RED, or other MQTT-capable systems
+- Mosquitto: MQTT broker template for Shelly devices, sensors, Home Assistant, Node-RED, or other MQTT-capable systems. The service is commented out and inactive by default.
 - Pi-hole: DNS Web UI and local DNS server
 - Caddy: reverse proxy for HTTPS/TLS (local certificates in the home network)
 
 ### MQTT connection for alternative systems
-Mosquitto remains the central MQTT broker in the stack and is reachable on port `1883`. Alternative systems such as Home Assistant, Node-RED, ioBroker, external Telegraf instances, or custom scripts can connect directly to the broker.
+Mosquitto remains available as a prepared MQTT broker template in the repository, but it is commented out in `docker-compose.yml` and inactive by default. To use the bundled broker, uncomment the Mosquitto service and the `mosquitto_*` volumes in `docker-compose.yml`, then restart the stack. After that, the broker is reachable on port `1883`. Alternative systems such as Home Assistant, Node-RED, ioBroker, external Telegraf instances, or custom scripts can connect directly to the broker.
 
-Connection details:
+Connection details after activation:
 - LAN host/FQDN: `mosquitto.${INTRANET_DOMAIN}` or the value from `MQTT_BROKER_FQDN`
+- DNS: re-enable the commented `mosquitto.${INTRANET_DOMAIN}` line in `FTLCONF_dns_hosts`
 - Port: `1883`
 - Username: `MQTT_USER` from `.env`
 - Password: `MQTT_PASSWORD` from `.env`
@@ -275,7 +275,7 @@ mosquitto_sub -h mosquitto.arkham.asylum -p 1883 -u "$MQTT_USER" -P "$MQTT_PASSW
 mosquitto_pub -h mosquitto.arkham.asylum -p 1883 -u "$MQTT_USER" -P "$MQTT_PASSWORD" -t "syn4ps3h0me/test" -m "hello"
 ```
 
-Docker containers in the same Compose network can use `mosquitto:1883` as broker address. External LAN devices should use the FQDN `mosquitto.${INTRANET_DOMAIN}` or `MQTT_BROKER_FQDN`.
+After activation, Docker containers in the same Compose network can use `mosquitto:1883` as broker address. External LAN devices should then use the FQDN `mosquitto.${INTRANET_DOMAIN}` or `MQTT_BROKER_FQDN`.
 
 ### Why `arkham.asylum` internally?
 - Consistent, memorable naming scheme for devices and services
@@ -289,7 +289,7 @@ Docker containers in the same Compose network can use `mosquitto:1883` as broker
 
 ### Service FQDN mapping (pointing to Raspberry Pi)
 - `pihole.arkham.asylum`
-- `mosquitto.arkham.asylum`
+- `mosquitto.arkham.asylum` (commented out in the Compose template by default; usable only after enabling the Mosquitto DNS entry)
 
 Static DNS entries are located in `docker/pihole/custom.list`.
 
@@ -344,7 +344,6 @@ cp .env .env.local  # optional backup before editing
 
 ### Secrets in `.env`
 Please set the secret variables used in production (examples):
-- `MQTT_PASSWORD=...`
 - `PIHOLE_API_PASSWORD=...`
 - `PIHOLE_ADMIN_PASSWORD=...`
 - `OPEN_WEBUI_ADMIN_PASSWORD=...`
@@ -365,7 +364,7 @@ docker compose down
 ### HTTP/HTTPS
 With default settings, services are reachable via DNS entries:
 - Pi-hole: `http://nightmaresiddious.arkham.asylum:8088`
-- Mosquitto: `mosquitto.arkham.asylum:1883`
+- Mosquitto: available at `mosquitto.arkham.asylum:1883` only after uncommenting the Mosquitto block
 
 Caddy uses an internal local CA by default (`tls internal`). This allows HTTPS access in the home network without public domains/port forwarding.
 Proxy/TLS configuration is in `caddy/config.json` (Caddy JSON config).
@@ -500,6 +499,7 @@ docker compose config
 docker compose up -d
 
 # Check DNS resolution via Pi-hole (explicit DNS server)
+# Check mosquitto.arkham.asylum only if the Mosquitto DNS entry was enabled
 nslookup mosquitto.arkham.asylum 192.168.1.101
 nslookup darksiddious.arkham.asylum 192.168.1.101
 
@@ -513,7 +513,7 @@ curl -I https://pihole.arkham.asylum/admin/
 For modular removal, use `uninstall.sh`.
 The script can remove individual parts:
 
-- Smart Home MQTT broker (mosquitto)
+- Smart Home MQTT broker (mosquitto; inactive Compose template)
 - Pi-hole
 - Caddy
 - Voice pipeline

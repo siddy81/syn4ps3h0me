@@ -7,35 +7,37 @@ x-auth-env: &auth-env
 
 
 services:
-  mosquitto:
-    image: eclipse-mosquitto:2
-    container_name: mqtt-broker
-    hostname: mosquitto.${INTRANET_DOMAIN}
-    restart: unless-stopped
-    networks:
-      - intranet
-    ports:
-      - "1883:1883"
-    environment:
-      <<: *auth-env
-    volumes:
-      - ./mosquitto/config:/mosquitto/config:ro
-      - mosquitto_data:/mosquitto/data
-      - mosquitto_log:/mosquitto/log
-    command:
-      - sh
-      - -ec
-      - |
-        if [ ! -f /mosquitto/data/passwd ]; then
-          echo "Create passwd file"
-          mosquitto_passwd -b -c /mosquitto/data/passwd "$$MQTT_USER" "$$MQTT_PASSWORD"
-        else
-          echo "Update passwd for user $$MQTT_USER"
-          mosquitto_passwd -b /mosquitto/data/passwd "$$MQTT_USER" "$$MQTT_PASSWORD"
-        fi
-
-        chmod 600 /mosquitto/data/passwd
-        exec mosquitto -c /mosquitto/config/mosquitto.conf
+  # Mosquitto is intentionally inactive by default.
+  # Uncomment this service and the mosquitto_* volumes below to enable the bundled MQTT broker.
+  # mosquitto:
+  #   image: eclipse-mosquitto:2
+  #   container_name: mqtt-broker
+  #   hostname: mosquitto.${INTRANET_DOMAIN}
+  #   restart: unless-stopped
+  #   networks:
+  #     - intranet
+  #   ports:
+  #     - "1883:1883"
+  #   environment:
+  #     <<: *auth-env
+  #   volumes:
+  #     - ./mosquitto/config:/mosquitto/config:ro
+  #     - mosquitto_data:/mosquitto/data
+  #     - mosquitto_log:/mosquitto/log
+  #   command:
+  #     - sh
+  #     - -ec
+  #     - |
+  #       if [ ! -f /mosquitto/data/passwd ]; then
+  #         echo "Create passwd file"
+  #         mosquitto_passwd -b -c /mosquitto/data/passwd "$$MQTT_USER" "$$MQTT_PASSWORD"
+  #       else
+  #         echo "Update passwd for user $$MQTT_USER"
+  #         mosquitto_passwd -b /mosquitto/data/passwd "$$MQTT_USER" "$$MQTT_PASSWORD"
+  #       fi
+  #
+  #       chmod 600 /mosquitto/data/passwd
+  #       exec mosquitto -c /mosquitto/config/mosquitto.conf
 
   pihole:
     image: pihole/pihole:latest
@@ -79,7 +81,7 @@ services:
         ${RPI_IP} nightmaresiddious.${INTRANET_DOMAIN}
         192.168.1.85 wohnzimmerlampe.${INTRANET_DOMAIN}
         ${RPI_IP} pihole.${INTRANET_DOMAIN}
-        ${RPI_IP} mosquitto.${INTRANET_DOMAIN}
+        # ${RPI_IP} mosquitto.${INTRANET_DOMAIN}
         ${RPI_IP} caddy.${INTRANET_DOMAIN}
         ${RPI_IP} llm.${INTRANET_DOMAIN}
         ${RPI_IP} open-webui.${INTRANET_DOMAIN}
@@ -247,8 +249,8 @@ networks:
     name: intranet
 
 volumes:
-  mosquitto_data:
-  mosquitto_log:
+  # mosquitto_data:
+  # mosquitto_log:
   caddy_data:
   open-webui:
   open-webui-knowledge-sync-state:
