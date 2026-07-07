@@ -9,7 +9,7 @@
 
 let CONFIG = {
     // MQTT Topic Basis
-    topic_base: "shellies/blu",
+    topic_base: "shellies",
 
     // Default-Timer für Motion-Sensoren, falls kein motion=0 kommt
     default_no_motion_after_sec: 90,
@@ -30,29 +30,34 @@ let CONFIG = {
     //  - motion: erwartet hauptsächlich motion-Feld
     //  - door:   erwartet hauptsächlich window-Feld
     //  - auto:   erkennt anhand eingehender Daten
+    // topic_name: fester Topic-Teil für <standort-oder-funktion>, bewusst ohne RegEx/Normalisierung auf dem Shelly
     // ------------------------------------------------------------------------
     devices: [
         {
             mac: "<MAC>",
             name: "Schlafzimmer Bewegung",
+            topic_name: "schlafzimmer_bewegung",
             type: "motion",
             no_motion_after_sec: 90
         },
         {
             mac: "<MAC>",
             name: "Wohnzimmer Bewegung",
+            topic_name: "wohnzimmer_bewegung",
             type: "motion",
             no_motion_after_sec: 90
         },
         {
             mac: "<MAC>",
             name: "Essecke Bewegung",
+            topic_name: "essecke_bewegung",
             type: "motion",
             no_motion_after_sec: 90
         },
         {
             mac: "<MAC>",
             name: "Flur Bewegung",
+            topic_name: "flur_bewegung",
             type: "motion",
             no_motion_after_sec: 90
         },
@@ -60,18 +65,21 @@ let CONFIG = {
         {
             mac: "<MAC>",
             name: "Terrassentür",
+            topic_name: "terrassentuer",
             type: "door",
             no_motion_after_sec: 90
         },
         {
             mac: "<MAC>",
             name: "Wohnungstür",
+            topic_name: "wohnungstuer",
             type: "door",
             no_motion_after_sec: 90
         },
         {
             mac: "<MAC>",
             name: "Balkontür",
+            topic_name: "balkontuer",
             type: "door",
             no_motion_after_sec: 90
         }
@@ -83,17 +91,20 @@ let CONFIG = {
     // exit:  motion(1)  -> door(open)
     // motion_macs erlaubt mehrere Bewegungsmelder pro Gruppe
     // Problem: es werden aktuell zu viele Events geworfen, muss an einer geeigneten Stelle einen Cooldown o.Ä. einprogrammieren
+    // topic_name: fester Topic-Teil für die Gruppe, bewusst ohne RegEx/Normalisierung auf dem Shelly
     // ------------------------------------------------------------------------
     flow_groups: [
-         {
-             name: "Terrassentür eingang",
-             door_mac: "<MAC Door>",
-             motion_mac: "<MAC Motion>",
-             sequence_timeout_sec: 20,
-             door_open_value: 1
-         },
+        {
+            name: "Terrassentür eingang",
+            topic_name: "terrassentuer_eingang",
+            door_mac: "<MAC Door>",
+            motion_mac: "<MAC Motion>",
+            sequence_timeout_sec: 20,
+            door_open_value: 1
+        },
         {
             name: "Wohnungstür eingang",
+            topic_name: "wohnungstuer_eingang",
             door_mac: "<MAC Door>",
             motion_mac: "<MAC Motion>",
             sequence_timeout_sec: 20,
@@ -101,6 +112,7 @@ let CONFIG = {
         },
         {
             name: "Balkontür eingang",
+            topic_name: "balkontuer_eingang",
             door_mac: "<MAC Door>",
             motion_mac: "<MAC Motion>",
             sequence_timeout_sec: 20,
@@ -114,6 +126,7 @@ if ((!CONFIG.devices || CONFIG.devices.length === 0) && CONFIG.sensor_mac && CON
     CONFIG.devices = [{
         mac: CONFIG.sensor_mac,
         name: CONFIG.device_name,
+        topic_name: "unknown",
         type: "motion",
         no_motion_after_sec: CONFIG.no_motion_after_sec || CONFIG.default_no_motion_after_sec
     }];
@@ -162,8 +175,15 @@ function nowUnix() {
     return 0;
 }
 
+// Topic-Gerätetyp gemäß Vorgabe: SHELLY_MOTION / SHELLY_DOOR_WINDOW, aber im Topic nur lower case
+function getTopicDeviceType(device) {
+    if (device.type === "motion") return "shelly_motion";
+    if (device.type === "door") return "shelly_door_window";
+    return "shelly_sensor";
+}
+
 function getTopicPrefix(device) {
-    return CONFIG.topic_base + "/" + device.name;
+    return CONFIG.topic_base + "/" + getTopicDeviceType(device) + "_" + device.topic_name;
 }
 
 function mqttPublish(topic, payload, retainOverride) {
@@ -324,7 +344,7 @@ function scheduleOffTimeout(device, extra) {
 }
 
 function publishFlowDirection(group, direction, triggerMac) {
-    let topic = CONFIG.topic_base + "/group/" + group.name;
+    let topic = CONFIG.topic_base + "/group/" + group.topic_name;
     let payload = {
         ts: nowUnix(),
         group: group.name,
@@ -545,6 +565,11 @@ function initDevices() {
             continue;
         }
 
+        if (!d.topic_name) {
+            logWarn("Ungueltiger Geräte-Eintrag bei index=" + i + " (topic_name fehlt)");
+            continue;
+        }
+
         d.mac = d.mac.toLowerCase();
         d.type = d.type || "auto";
 
@@ -555,7 +580,7 @@ function initDevices() {
         deviceByMac[d.mac] = d;
         ensureDeviceState(d.mac);
 
-        logInfo("Gerät registriert: name=" + d.name + " mac=" + d.mac + " type=" + d.type);
+        logInfo("Gerät registriert: name=" + d.name + " mac=" + d.mac + " type=" + d.type + " topic=" + getTopicPrefix(d));
     }
 }
 
@@ -567,6 +592,11 @@ function initFlowGroups() {
         let g = CONFIG.flow_groups[i];
         if (!g || !g.name || !g.door_mac) {
             logWarn("Flow-Group index=" + i + " ungültig (name/door_mac benötigt)");
+            continue;
+        }
+
+        if (!g.topic_name) {
+            logWarn("Flow-Group index=" + i + " ungültig (topic_name benötigt)");
             continue;
         }
 
@@ -607,7 +637,7 @@ function publishStartupStatus() {
 
     for (i = 0; i < CONFIG.devices.length; i++) {
         let d = CONFIG.devices[i];
-        if (!d || !d.mac || !d.name) continue;
+        if (!d || !d.mac || !d.name || !d.topic_name) continue;
 
         mqttPublish(
             getTopicPrefix(d) + "/status",
