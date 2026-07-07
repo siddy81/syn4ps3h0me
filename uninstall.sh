@@ -87,7 +87,7 @@ select_modules() {
     return
   fi
 
-  if ask_module "1) Smart Home Shelly Überwachung (mosquitto, influxdb, telegraf, grafana)"; then
+  if ask_module "1) Smart Home MQTT-Broker (mosquitto)"; then
     MODULE_SMARTHOME=true
   fi
 
@@ -139,17 +139,10 @@ remove_volume_if_exists() {
 }
 
 uninstall_smarthome() {
-  log "Deinstalliere Modul: Smart Home Shelly Überwachung"
+  log "Deinstalliere Modul: Smart Home MQTT-Broker"
   compose_stop_and_remove_service mosquitto
-  compose_stop_and_remove_service influxdb
-  compose_stop_and_remove_service telegraf
-  compose_stop_and_remove_service grafana
-
   remove_volume_if_exists "syn4ps3h0me_mosquitto_data"
   remove_volume_if_exists "syn4ps3h0me_mosquitto_log"
-  remove_volume_if_exists "syn4ps3h0me_influxdb_data"
-  remove_volume_if_exists "syn4ps3h0me_influxdb_config"
-  remove_volume_if_exists "syn4ps3h0me_grafana_data"
 }
 
 uninstall_pihole() {
@@ -221,7 +214,7 @@ summary() {
   echo "hailo-apps Verzeichnis: ${HAILO_APPS_DIR}"
   echo
   echo "Ausgewählte Module:"
-  [[ "${MODULE_SMARTHOME}" == "true" ]] && echo "- Smart Home Shelly Überwachung"
+  [[ "${MODULE_SMARTHOME}" == "true" ]] && echo "- Smart Home MQTT-Broker"
   [[ "${MODULE_PIHOLE}" == "true" ]] && echo "- Pi-hole"
   [[ "${MODULE_CADDY}" == "true" ]] && echo "- Caddy"
   [[ "${MODULE_VOICE}" == "true" ]] && echo "- Voice Pipeline"

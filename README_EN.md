@@ -2,7 +2,7 @@
 
 ## About this project
 
-This project simplifies the installation and baseline configuration of a local smart home, monitoring, and infrastructure environment on a Raspberry Pi.
+This project simplifies the installation and baseline configuration of a local smart home and infrastructure environment on a Raspberry Pi.
 
 Installation, baseline configuration, and startup of required services are handled centrally via **`install.sh`**. Depending on the system state, a **reboot via `sudo reboot`** may be required during setup.
 
@@ -10,9 +10,6 @@ At the moment, the project includes automated setup and pre-configuration of the
 
 - **Docker**
 - **Mosquitto**
-- **Telegraf**
-- **InfluxDB**
-- **Grafana**
 - **Pi-hole**
 - **Caddy**
 - **Open WebUI**
@@ -23,7 +20,7 @@ In addition, initial components for future AI/voice features are currently prepa
 - **Whisper resources**
 - **hailo-ollama**
 
-This creates a local, self-hosted foundation for monitoring, MQTT communication, DNS, HTTPS access, and AI-assisted extensions.
+This creates a local, self-hosted foundation for MQTT communication, DNS, HTTPS access, and AI-assisted extensions.
 
 A **voice pipeline** for local voice control has also been newly implemented:
 
@@ -91,9 +88,6 @@ Installation uses **service-specific secrets** in `.env` (no shared mandatory pa
 Set/change these before production use:
 
 - `MQTT_PASSWORD`
-- `INFLUXDB_PASSWORD`
-- `INFLUXDB_WRITE_TOKEN`
-- `GRAFANA_ADMIN_PASSWORD`
 - `PIHOLE_API_PASSWORD`
 - `PIHOLE_ADMIN_PASSWORD`
 - `OPEN_WEBUI_ADMIN_PASSWORD`
@@ -258,16 +252,30 @@ Without `VOICE_TTS_SHELL_COMMAND`, the pipeline automatically uses `espeak-ng` +
 Pi-hole provides the central DNS resolver in the home network. Static DNS entries ensure reliable internal resolution of device and service names.
 
 ### What do the Docker services do?
-- Mosquitto: MQTT broker, e.g. for Shelly devices or other MQTT-capable devices
-- Telegraf: reads MQTT messages and writes them to InfluxDB
-- InfluxDB: database storing logged data (e.g. MQTT data)
-- Grafana: dashboards and visualization
+- Mosquitto: MQTT broker, e.g. for Shelly devices, sensors, Home Assistant, Node-RED, or other MQTT-capable systems
 - Pi-hole: DNS Web UI and local DNS server
 - Caddy: reverse proxy for HTTPS/TLS (local certificates in the home network)
 
-### Important MQTT note for Shelly H&T devices
-For **Shelly H&T (HT) devices**, the MQTT topic/device name must start with the prefix **`shelly_ht_`**.
-Only then can data be correctly recognized by existing Telegraf/Influx/Grafana flows and shown properly in HT dashboards.
+### MQTT connection for alternative systems
+Mosquitto remains the central MQTT broker in the stack and is reachable on port `1883`. Alternative systems such as Home Assistant, Node-RED, ioBroker, external Telegraf instances, or custom scripts can connect directly to the broker.
+
+Connection details:
+- LAN host/FQDN: `mosquitto.${INTRANET_DOMAIN}` or the value from `MQTT_BROKER_FQDN`
+- Port: `1883`
+- Username: `MQTT_USER` from `.env`
+- Password: `MQTT_PASSWORD` from `.env`
+- TLS: not enabled in the default setup; traffic is unencrypted inside the internal LAN
+
+Examples:
+```bash
+# Test the connection and subscribe to all topics
+mosquitto_sub -h mosquitto.arkham.asylum -p 1883 -u "$MQTT_USER" -P "$MQTT_PASSWORD" -t "#" -v
+
+# Publish a test message
+mosquitto_pub -h mosquitto.arkham.asylum -p 1883 -u "$MQTT_USER" -P "$MQTT_PASSWORD" -t "syn4ps3h0me/test" -m "hello"
+```
+
+Docker containers in the same Compose network can use `mosquitto:1883` as broker address. External LAN devices should use the FQDN `mosquitto.${INTRANET_DOMAIN}` or `MQTT_BROKER_FQDN`.
 
 ### Why `arkham.asylum` internally?
 - Consistent, memorable naming scheme for devices and services
@@ -281,6 +289,7 @@ Only then can data be correctly recognized by existing Telegraf/Influx/Grafana f
 
 ### Service FQDN mapping (pointing to Raspberry Pi)
 - `pihole.arkham.asylum`
+- `mosquitto.arkham.asylum`
 
 Static DNS entries are located in `docker/pihole/custom.list`.
 
@@ -336,9 +345,6 @@ cp .env .env.local  # optional backup before editing
 ### Secrets in `.env`
 Please set the secret variables used in production (examples):
 - `MQTT_PASSWORD=...`
-- `INFLUXDB_PASSWORD=...`
-- `INFLUXDB_WRITE_TOKEN=...`
-- `GRAFANA_ADMIN_PASSWORD=...`
 - `PIHOLE_API_PASSWORD=...`
 - `PIHOLE_ADMIN_PASSWORD=...`
 - `OPEN_WEBUI_ADMIN_PASSWORD=...`
@@ -358,15 +364,12 @@ docker compose down
 
 ### HTTP/HTTPS
 With default settings, services are reachable via DNS entries:
--
-   → `grafana` `http://nightmaresiddious.arkham.asylum:3000`
-   → `pihole` `http://nightmaresiddious.arkham.asylum:8088`
-   → `mosquitto` `http://nightmaresiddious.arkham.asylum:1883`
+- Pi-hole: `http://nightmaresiddious.arkham.asylum:8088`
+- Mosquitto: `mosquitto.arkham.asylum:1883`
 
 Caddy uses an internal local CA by default (`tls internal`). This allows HTTPS access in the home network without public domains/port forwarding.
 Proxy/TLS configuration is in `caddy/config.json` (Caddy JSON config).
 Most important variables in `.env`:
-- `GRAFANA_DOMAIN=grafana.your-domain.tld`
 - `PIHOLE_DOMAIN=pihole.your-domain.tld`
 - `LEGACY_HOST_DOMAIN=nightmaresiddious.arkham.asylum` (optional, so access via hostname also works over HTTPS)
 - `LEGACY_HOST_IP=192.168.1.101` (optional, so access via host IP also works over HTTPS)
@@ -384,11 +387,10 @@ docker compose up -d --force-recreate caddy
 ```
 
 Additionally, direct service ports are enabled again as fallback:
-- Grafana direct: `http://nightmaresiddious.arkham.asylum:3000` or `http://192.168.1.101:3000`
 - Pi-hole direct: `http://nightmaresiddious.arkham.asylum:8088/admin/` or `http://192.168.1.101:8088/admin/`
 
 Important: these direct ports speak **HTTP**, not HTTPS.
-`https://...:3000` or `https://...:8088` leads to browser errors.
+`https://...:8088` leads to browser errors.
 
 ### First Pi-hole login
 1. Open Pi-hole: `https://pihole.arkham.asylum/admin/` (provided via Caddy reverse proxy).
@@ -498,13 +500,11 @@ docker compose config
 docker compose up -d
 
 # Check DNS resolution via Pi-hole (explicit DNS server)
-nslookup grafana.arkham.asylum 192.168.1.101
-nslookup mqtt.arkham.asylum 192.168.1.101
+nslookup mosquitto.arkham.asylum 192.168.1.101
 nslookup darksiddious.arkham.asylum 192.168.1.101
 
 # Check reachability
 ping -c 2 nightmaresiddious.arkham.asylum
-curl -I https://grafana.arkham.asylum
 curl -I https://pihole.arkham.asylum/admin/
 ```
 
@@ -513,7 +513,7 @@ curl -I https://pihole.arkham.asylum/admin/
 For modular removal, use `uninstall.sh`.
 The script can remove individual parts:
 
-- Smart Home (mosquitto, influxdb, telegraf, grafana)
+- Smart Home MQTT broker (mosquitto)
 - Pi-hole
 - Caddy
 - Voice pipeline
@@ -549,20 +549,16 @@ Symptom: browser shows `ERR_CONNECTION_REFUSED` or TLS errors on old port URLs.
 
 Background:
 - With Caddy, secured access runs via **port 443** by default.
-- Direct ports (`3000`, `8088`) are available as HTTP fallback; HTTPS runs via port 443 through Caddy.
+- The direct Pi-hole port (`8088`) is available as HTTP fallback; HTTPS runs via port 443 through Caddy.
 
 Use instead:
 ```bash
 # HTTPS via Caddy
-https://grafana.arkham.asylum
 https://pihole.arkham.asylum/admin/
-https://nightmaresiddious.arkham.asylum/login
 https://nightmaresiddious.arkham.asylum/admin/
-https://192.168.1.101/login
 https://192.168.1.101/admin/
 
 # HTTP fallback directly on service ports
-http://192.168.1.101:3000
 http://192.168.1.101:8088/admin/
 ```
 
@@ -650,7 +646,6 @@ Symptom: FQDN resolves to wrong IP.
 Check:
 ```bash
 cat docker/pihole/custom.list
-nslookup telegraf.arkham.asylum 192.168.1.101
 ```
 
 Fix:

@@ -62,42 +62,6 @@
               "match": [
                 {
                   "host": [
-                    "{env.LEGACY_HOST_IP}"
-                  ]
-                }
-              ],
-              "handle": [
-                {
-                  "handler": "subroute",
-                  "routes": [
-                    {
-                      "handle": [
-                        {
-                          "encodings": {
-                            "gzip": {},
-                            "zstd": {}
-                          },
-                          "handler": "encode"
-                        },
-                        {
-                          "handler": "reverse_proxy",
-                          "upstreams": [
-                            {
-                              "dial": "grafana:3000"
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ],
-              "terminal": true
-            },
-            {
-              "match": [
-                {
-                  "host": [
                     "{env.LEGACY_HOST_DOMAIN}"
                   ],
                   "path": [
@@ -124,78 +88,6 @@
                           "upstreams": [
                             {
                               "dial": "pihole:80"
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ],
-              "terminal": true
-            },
-            {
-              "match": [
-                {
-                  "host": [
-                    "{env.LEGACY_HOST_DOMAIN}"
-                  ]
-                }
-              ],
-              "handle": [
-                {
-                  "handler": "subroute",
-                  "routes": [
-                    {
-                      "handle": [
-                        {
-                          "encodings": {
-                            "gzip": {},
-                            "zstd": {}
-                          },
-                          "handler": "encode"
-                        },
-                        {
-                          "handler": "reverse_proxy",
-                          "upstreams": [
-                            {
-                              "dial": "grafana:3000"
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ],
-              "terminal": true
-            },
-            {
-              "match": [
-                {
-                  "host": [
-                    "{env.GRAFANA_DOMAIN}"
-                  ]
-                }
-              ],
-              "handle": [
-                {
-                  "handler": "subroute",
-                  "routes": [
-                    {
-                      "handle": [
-                        {
-                          "encodings": {
-                            "gzip": {},
-                            "zstd": {}
-                          },
-                          "handler": "encode"
-                        },
-                        {
-                          "handler": "reverse_proxy",
-                          "upstreams": [
-                            {
-                              "dial": "grafana:3000"
                             }
                           ]
                         }
