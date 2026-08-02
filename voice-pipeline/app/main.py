@@ -15,9 +15,11 @@ import numpy as np
 from openwakeword.model import Model
 
 from .error_messages import build_shelly_unavailable_message
+from .device_registry import DeviceRegistry
+from .device_registry_api import DeviceRegistryApiServer
 from .integrations.llm_client import OllamaClient
 from .integrations.shelly_client import ShellyClient
-from .router import CommandRouter, RouteTarget
+from .orchestration import CommandOrchestrator
 from .stt_whisper import create_transcriber
 from .tts import TTSClient
 
@@ -50,9 +52,11 @@ class VoicePipeline:
         self._ready_announced = False
 
         self._transcriber = create_transcriber()
-        self._router = CommandRouter()
         self._llm = OllamaClient()
         self._shelly = ShellyClient()
+        self._registry = DeviceRegistry()
+        self._orchestrator = CommandOrchestrator(llm=self._llm, shelly=self._shelly, registry=self._registry)
+        self._registry_api = DeviceRegistryApiServer(self._registry)
         self._tts = TTSClient()
 
         if self.whisper_preload:
@@ -61,6 +65,9 @@ class VoicePipeline:
                 self._transcriber.preload()
             except Exception as exc:
                 logger.warning("Whisper-Preload fehlgeschlagen, fallback auf lazy loading: %s", exc)
+
+        self._llm.preload_function_model()
+        self._registry_api.start()
 
     @staticmethod
     def _run_cmd(cmd: list[str]) -> tuple[int, str]:
@@ -335,31 +342,12 @@ class VoicePipeline:
         finally:
             recording.unlink(missing_ok=True)
 
-        routed = self._router.route(transcript)
-        logger.info("Normalisierter Befehl: %s", routed.normalized_text)
-        logger.info("Erkannter Intent / Routing-Ziel: %s", routed.target.value)
-
-        if routed.target == RouteTarget.SHELLY and routed.smart_home is not None:
-            try:
-                response = self._shelly.send(routed.smart_home)
-                if response.success:
-                    label = routed.smart_home.room or routed.smart_home.device or "Gerät"
-                    confirmation = f"{label} ausgeschaltet" if routed.smart_home.action == "off" else f"{label} eingeschaltet"
-                    logger.info("Smart-Home-Befehl erfolgreich: %s", response.message)
-                    self._tts.speak(confirmation)
-                else:
-                    logger.error("Smart-Home-Befehl fehlgeschlagen: %s", response.message)
-                    self._tts.speak(build_shelly_unavailable_message(response.message))
-            except Exception as exc:
-                logger.exception("Shelly-Integration fehlgeschlagen: %s", exc)
-                self._tts.speak(build_shelly_unavailable_message(str(exc)))
-            return
-
         try:
-            llm_response = self._llm.chat(routed.normalized_text)
-            self._tts.speak(llm_response)
+            result = self._orchestrator.handle_text(transcript)
+            self._tts.speak(result.speech_text)
         except Exception as exc:
-            logger.exception("LLM-Integration fehlgeschlagen: %s", exc)
+            logger.exception("Orchestrierung fehlgeschlagen: %s", exc)
+            self._tts.speak(build_shelly_unavailable_message(str(exc)))
 
 
 if __name__ == "__main__":
